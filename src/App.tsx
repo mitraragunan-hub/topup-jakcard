@@ -114,8 +114,10 @@ export default function App() {
           petugas: ['Irma Khotimah', 'Arif Nurdiansah', 'Aldi Priadi Ekapaksi'],
           lokasi: ['TOL UTARA', 'Barat Kendaraan', 'Motor Utara'],
           penandatangan: { bendahara: 'Evi Irmawati', pemeriksa: 'Hermawati' }
-        });
+        }).catch(err => console.log("Gagal inisiasi Master DB", err));
       }
+    }, (error) => {
+       console.error("Gagal membaca Master DB:", error);
     });
 
     const recordsRef = collection(db, 'artifacts', appId, 'public', 'data', 'records');
@@ -124,7 +126,7 @@ export default function App() {
       setRecords(recs);
     });
 
-    const extraRef = doc(db, 'artifacts', appId, 'public', 'data', 'daily_extra', formData.tanggal);
+    const extraRef = doc(db, 'artifacts', appId, 'public', 'data', 'daily_extra', filter.startDate);
     const unsubExtra = onSnapshot(extraRef, (docSnap) => {
       if (docSnap.exists()) {
         const data = docSnap.data();
@@ -140,7 +142,7 @@ export default function App() {
     });
 
     return () => { unsubMaster(); unsubRecords(); unsubExtra(); };
-  }, [user, formData.tanggal]);
+  }, [user, filter.startDate]);
 
   const HARGA_K20 = 45000;
   const HARGA_K50 = 75000;
@@ -158,7 +160,12 @@ export default function App() {
 
   const updateMasterDB = async (payload) => {
     if (!user) return;
-    await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'master'), payload, { merge: true });
+    try {
+      await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'master'), payload, { merge: true });
+    } catch (error) {
+      console.error("Gagal Simpan Master DB:", error);
+      alert("⚠️ GAGAL MENYIMPAN KE DATABASE!");
+    }
   };
 
   const [newPetugas, setNewPetugas] = useState('');
@@ -210,9 +217,13 @@ export default function App() {
       const trxKey = name.replace('Display', 'Trx');
       const trxValue = name === 'ecarDisplay' ? (rawNumber / 250000) : (rawNumber / 5000);
       
-      await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'daily_extra', formData.tanggal), {
-        [rawKey]: rawNumber, [trxKey]: trxValue
-      }, { merge: true });
+      try {
+        await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'daily_extra', filter.startDate), {
+          [rawKey]: rawNumber, [trxKey]: trxValue
+        }, { merge: true });
+      } catch (error) {
+         console.error("Gagal simpan Ecar/Foto:", error);
+      }
     }
   };
 
@@ -236,21 +247,33 @@ export default function App() {
       ntk20: Number(formData.ntk20) || 0, ntk50: Number(formData.ntk50) || 0,
     };
 
-    if (editingId) {
-      await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'records', editingId), payload);
-      setEditingId(null);
-    } else {
-      const now = new Date();
-      payload.jam_input = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
-      payload.sesi = getActiveSesi();
-      await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'records'), payload);
+    try {
+      if (editingId) {
+        await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'records', editingId), payload);
+        setEditingId(null);
+      } else {
+        const now = new Date();
+        payload.jam_input = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
+        payload.sesi = getActiveSesi();
+        await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'records'), payload);
+      }
+      setFormData(prev => ({ ...prev, nama: '', lokasi: '', topupDisplay: '', topupRaw: 0, tk20: '', tk50: '', ntk20: '', ntk50: '', ket: '' }));
+      alert("✅ Data berhasil disimpan!");
+    } catch (error) {
+      console.error("Gagal input setoran:", error);
+      alert("⚠️ GAGAL MENYIMPAN KE CLOUD!");
     }
-    setFormData(prev => ({ ...prev, nama: '', lokasi: '', topupDisplay: '', topupRaw: 0, tk20: '', tk50: '', ntk20: '', ntk50: '', ket: '' }));
   };
   
   const hapusData = async (id) => { 
-    if(!user) return;
-    if(window.confirm('Hapus data ini dari cloud?')) await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'records', id)); 
+    if (!user) return;
+    if(window.confirm('Hapus data ini dari cloud?')) {
+      try {
+        await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'records', id)); 
+      } catch (error) {
+        alert("⚠️ Gagal menghapus!");
+      }
+    }
   };
 
   const filteredAndSortedRecords = useMemo(() => {
@@ -290,15 +313,6 @@ export default function App() {
   const todaySesiRecords = useMemo(() => records.filter(r => r.tanggal === formData.tanggal && r.sesi === getActiveSesi()), [records, formData.tanggal]);
   const livePreviewSums = calculateSums(todaySesiRecords);
   
-  const reportData = {
-    kartu20Rp: currentSums.tk20 * 25000, kartu50Rp: currentSums.tk50 * 25000,
-    saldo20Rp: currentSums.tk20 * 20000, saldo50Rp: currentSums.tk50 * 50000,
-  };
-  const totalKartu = reportData.kartu20Rp + reportData.kartu50Rp;
-  const totalSaldo = reportData.saldo20Rp + reportData.saldo50Rp;
-  const totalPenjualanJakcard = totalKartu + totalSaldo;
-  const grandTotal = totalPenjualanJakcard + currentSums.topup;
-
   if (isLoadingDB) return (
     <div className="flex flex-col h-screen items-center justify-center bg-gray-50 text-indigo-800 font-bold text-xl animate-pulse">
       <svg className="w-12 h-12 mb-4 text-indigo-600 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
@@ -331,7 +345,7 @@ export default function App() {
 
           <div className="text-green-300 uppercase text-xs font-bold mb-2 mt-6 px-2">Sistem Database</div>
           <button onClick={() => { setActiveTab('laporan'); setIsSidebarOpen(false); }} className={`w-full flex items-center gap-3 px-3 py-3 rounded-lg transition-colors ${activeTab === 'laporan' ? 'bg-green-700 text-white' : 'text-green-100 hover:bg-green-700'}`}>
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path></svg> Laporan Keseluruhan
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path></svg> Laporan & Analitik
           </button>
           <button onClick={() => { setActiveTab('master'); setIsSidebarOpen(false); }} className={`w-full flex items-center gap-3 px-3 py-3 rounded-lg transition-colors ${activeTab === 'master' ? 'bg-green-700 text-white' : 'text-green-100 hover:bg-green-700'}`}>
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg> Data Master
@@ -353,11 +367,13 @@ export default function App() {
               {activeTab === 'master' && 'Master Data Cloud'}
               {activeTab === 'print1' && 'Pencetakan Tabel Setoran'}
               {activeTab === 'print2' && 'Pencetakan Rekapitulasi'}
-              {activeTab === 'laporan' && 'Laporan & Analitik Cloud'}
+              {activeTab === 'laporan' && 'Laporan & Detil Transaksi'}
             </h2>
             <div className="hidden sm:flex items-center gap-2 bg-green-50 px-3 py-1.5 rounded-full border border-green-200">
-               <span className="relative flex h-3 w-3"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span><span className="relative inline-flex rounded-full h-3 w-3 bg-green-500"></span></span>
-               <span className="text-xs font-bold text-green-800 tracking-wide">Firebase Online</span>
+               <span className="relative flex h-3 w-3"><span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${user ? 'bg-green-400' : 'bg-yellow-400'}`}></span><span className={`relative inline-flex rounded-full h-3 w-3 ${user ? 'bg-green-500' : 'bg-yellow-500'}`}></span></span>
+               <span className={`text-xs font-bold tracking-wide ${user ? 'text-green-800' : 'text-yellow-800'}`}>
+                 {user ? 'Firebase Online' : 'Koneksi Offline (Guest)'}
+               </span>
             </div>
           </div>
         </header>
@@ -444,6 +460,7 @@ export default function App() {
           {/* TAB: INPUT FORM */}
           {activeTab === 'input' && (
             <div className="max-w-7xl mx-auto space-y-6">
+              {/* SECTION 1: FORM UTAMA */}
               <div className="bg-white rounded-xl shadow-lg overflow-hidden border-t-4 border-green-600">
                 <div className="p-6 md:p-10">
                   <form onSubmit={handleSubmit} className="space-y-8">
@@ -468,62 +485,36 @@ export default function App() {
                 </div>
               </div>
 
+              {/* SECTION 2: MONITOR INPUT HARI INI (DIPINDAH KE TENGAH) */}
+              <div className="bg-white rounded-xl shadow-lg border overflow-hidden">
+                <div className="bg-indigo-50 p-4 border-b flex justify-between items-center"><h3 className="font-bold text-indigo-900 text-lg">Monitor Input Hari Ini ({getActiveSesi()})</h3><div className="text-right"><div className="text-xs text-gray-500 font-semibold">Total Top Up</div><div className="text-xl font-bold text-green-600">Rp {formatRp(livePreviewSums.topup)}</div></div></div>
+                <div className="overflow-x-auto p-4 custom-scrollbar">
+                  <table className="min-w-full text-xs text-left border rounded"><thead className="bg-gray-100 text-gray-700 font-bold"><tr><th className="p-3 border">Jam</th><th className="p-3 border">Petugas</th><th className="p-3 border">Lokasi</th><th className="p-3 border text-right">Top Up</th><th className="p-3 border text-center text-blue-800">T.K20</th><th className="p-3 border text-center text-blue-800">T.K50</th><th className="p-3 border text-center text-orange-800">NT.K20</th><th className="p-3 border text-center text-orange-800">NT.K50</th><th className="p-3 border text-center">Aksi</th></tr></thead>
+                  <tbody className="divide-y">{todaySesiRecords.map(r => (<tr key={r.id} className="hover:bg-gray-50"><td className="p-3 border font-medium">{r.jam_input}</td><td className="p-3 border font-bold">{r.nama}</td><td className="p-3 border">{r.lokasi}</td><td className="p-3 border text-right font-bold text-green-700">{formatRp(r.topup)}</td><td className="p-3 border text-center">{r.tk20}</td><td className="p-3 border text-center">{r.tk50}</td><td className="p-3 border text-center">{r.ntk20}</td><td className="p-3 border text-center">{r.ntk50}</td><td className="p-3 border text-center"><button onClick={() => handleEdit(r)} className="text-blue-600 font-semibold mr-2">Edit</button><button onClick={() => hapusData(r.id)} className="text-red-500 font-semibold">Del</button></td></tr>))}
+                  {todaySesiRecords.length === 0 && <tr><td colSpan="9" className="p-8 text-center text-gray-400 italic font-medium">Belum ada input untuk sesi ini.</td></tr>}
+                  </tbody></table>
+                </div>
+              </div>
+
+              {/* SECTION 3: INPUT PENDAPATAN TAMBAHAN (DIPINDAH KE BAWAH) */}
               <div className="bg-white rounded-xl shadow-lg border border-gray-200 overflow-hidden border-t-4 border-purple-500">
                 <div className="bg-purple-50 p-4 border-b">
                   <h3 className="font-bold text-purple-900 text-lg flex items-center gap-2">Input Pendapatan Tambahan</h3>
                 </div>
                 <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div className="bg-gray-50 p-5 rounded-xl border"><h4 className="font-bold text-gray-800 mb-4 border-b pb-2">Pendapatan E-Car</h4><div className="flex gap-4"><div className="flex-1"><label className="block text-xs font-bold mb-2">Total Rp</label><input type="text" name="ecarDisplay" value={extraData.ecarDisplay} onChange={handleExtraChange} className="w-full border rounded-lg p-2.5 font-bold" /></div><div className="w-28"><label className="block text-xs font-bold mb-2">TRX</label><input type="number" value={extraData.ecarTrx} readOnly className="w-full border rounded-lg p-2.5 bg-gray-200 text-center font-bold" /></div></div></div>
-                  <div className="bg-gray-50 p-5 rounded-xl border"><h4 className="font-bold text-gray-800 mb-4 border-b pb-2">Pendapatan Foto Satwa</h4><div className="flex gap-4"><div className="flex-1"><label className="block text-xs font-bold mb-2">Total Rp</label><input type="text" name="fotoDisplay" value={extraData.fotoDisplay} onChange={handleExtraChange} className="w-full border rounded-lg p-2.5 font-bold" /></div><div className="w-28"><label className="block text-xs font-bold mb-2">TRX</label><input type="number" value={extraData.fotoTrx} readOnly className="w-full border rounded-lg p-2.5 bg-gray-200 text-center font-bold" /></div></div></div>
-                </div>
-              </div>
-
-              <div className="bg-white rounded-xl shadow-lg border overflow-hidden">
-                <div className="bg-indigo-50 p-4 border-b flex justify-between items-center"><h3 className="font-bold text-indigo-900 text-lg">Monitor Input Hari Ini ({getActiveSesi()})</h3><div className="text-right"><div className="text-xs text-gray-500 font-semibold">Total Top Up</div><div className="text-xl font-bold text-green-600">Rp {formatRp(livePreviewSums.topup)}</div></div></div>
-                <div className="overflow-x-auto p-4 custom-scrollbar">
-                  <table className="min-w-full text-xs text-left border rounded"><thead className="bg-gray-100 text-gray-700 font-bold"><tr><th className="p-3 border">Jam</th><th className="p-3 border">Petugas</th><th className="p-3 border">Lokasi</th><th className="p-3 border text-right">Top Up</th><th className="p-3 border text-center text-blue-800">T.K20</th><th className="p-3 border text-center text-blue-800">T.K50</th><th className="p-3 border text-center text-orange-800">NT.K20</th><th className="p-3 border text-center text-orange-800">NT.K50</th><th className="p-3 border text-center">Aksi</th></tr></thead>
-                  <tbody className="divide-y">{todaySesiRecords.map(r => (<tr key={r.id} className="hover:bg-gray-50"><td className="p-3 border font-medium">{r.jam_input}</td><td className="p-3 border font-bold">{r.nama}</td><td className="p-3 border">{r.lokasi}</td><td className="p-3 border text-right font-bold text-green-700">{formatRp(r.topup)}</td><td className="p-3 border text-center">{r.tk20}</td><td className="p-3 border text-center">{r.tk50}</td><td className="p-3 border text-center">{r.ntk20}</td><td className="p-3 border text-center">{r.ntk50}</td><td className="p-3 border text-center"><button onClick={() => handleEdit(r)} className="text-blue-600 font-semibold mr-2">Edit</button><button onClick={() => hapusData(r.id)} className="text-red-500 font-semibold">Del</button></td></tr>))}</tbody></table>
+                  <div className="bg-gray-50 p-5 rounded-xl border"><h4 className="font-bold text-gray-800 mb-4 border-b pb-2">Pendapatan E-Car</h4><div className="flex gap-4"><div className="flex-1"><label className="block text-xs font-bold mb-2">Total Rp</label><input type="text" name="ecarDisplay" value={extraData.ecarDisplay} onChange={handleExtraChange} className="w-full border rounded-lg p-2.5 font-bold outline-none focus:border-purple-400" placeholder="0" /></div><div className="w-28"><label className="block text-xs font-bold mb-2">TRX</label><input type="number" value={extraData.ecarTrx} readOnly className="w-full border rounded-lg p-2.5 bg-gray-200 text-center font-bold" /></div></div></div>
+                  <div className="bg-gray-50 p-5 rounded-xl border"><h4 className="font-bold text-gray-800 mb-4 border-b pb-2">Pendapatan Foto Satwa</h4><div className="flex gap-4"><div className="flex-1"><label className="block text-xs font-bold mb-2">Total Rp</label><input type="text" name="fotoDisplay" value={extraData.fotoDisplay} onChange={handleExtraChange} className="w-full border rounded-lg p-2.5 font-bold outline-none focus:border-purple-400" placeholder="0" /></div><div className="w-28"><label className="block text-xs font-bold mb-2">TRX</label><input type="number" value={extraData.fotoTrx} readOnly className="w-full border rounded-lg p-2.5 bg-gray-200 text-center font-bold" /></div></div></div>
                 </div>
               </div>
             </div>
           )}
 
-          {/* TAB: CETAK TABEL */}
-          <div className={activeTab === 'print1' ? 'block print:block max-w-7xl mx-auto' : 'hidden print:hidden'}>
-            <div className="mb-4 print:hidden flex flex-col sm:flex-row justify-between items-center bg-blue-50 p-4 rounded-xl border"><div className="flex items-center gap-3"><span className="text-sm font-bold">Pilih Sesi Cetak:</span><select value={filter.sesi} onChange={e => setFilter({...filter, sesi: e.target.value})} className="border rounded-lg p-2 outline-none font-bold"><option value="">Semua Sesi Digabung</option><option value="Siang">Hanya Sesi Siang</option><option value="Malam">Hanya Sesi Malam</option></select></div><button onClick={() => window.print()} className="bg-blue-600 text-white font-bold py-2 px-6 rounded-lg">Cetak Dokumen</button></div>
-            <div className="bg-white p-4 md:p-8 w-full min-h-[297mm] shadow-lg print:shadow-none font-sans text-xs sm:text-sm border"><div className="text-center mb-6 border-b pb-4"><h1 className="font-bold text-lg md:text-xl">REKAP PENERIMAAN SETORAN PENJUALAN KARTU JAKCARD DAN TOPUP</h1><h2 className="font-bold text-md">UNIT PENGELOLA TAMAN MARGASATWA RAGUNAN</h2></div><div className="flex justify-between mb-3 font-bold text-sm"><div>Hari/Tanggal : {filter.startDate === filter.endDate ? formatTanggalIndonesia(filter.startDate) : (filter.startDate ? `${filter.startDate} s/d ${filter.endDate}` : 'Semua Tanggal')}</div><div className="uppercase bg-gray-200 px-3 py-1 rounded">Sesi : {filter.sesi ? filter.sesi : 'SIANG & MALAM'}</div></div>
-              <table className="w-full border-collapse border border-black mb-4 text-[11px] md:text-xs"><thead className="bg-gray-200 text-center font-bold"><tr><th className="border border-black p-2" rowSpan="2">NO</th><th className="border border-black p-2" rowSpan="2">Nama</th><th className="border border-black p-2" rowSpan="2">Lokasi</th><th className="border border-black p-2" rowSpan="2">Jumlah TOP UP (Rp)</th><th className="border border-black p-2" colSpan="2">Tunai</th><th className="border border-black p-2" colSpan="2">Non Tunai</th><th className="border border-black p-2" rowSpan="2">Jumlah (Rp)</th><th className="border border-black p-2" rowSpan="2">KET</th></tr><tr><th className="border border-black p-1">K. 20</th><th className="border border-black p-1">K. 50</th><th className="border border-black p-1">K. 20</th><th className="border border-black p-1">K. 50</th></tr></thead>
-              <tbody>{filteredAndSortedRecords.map((r, i) => (<tr key={r.id} className="even:bg-gray-50"><td className="border border-black p-2 text-center">{i + 1}</td><td className="border border-black p-2">{r.nama}</td><td className="border border-black p-2">{r.lokasi}</td><td className="border border-black p-2 text-right">{formatRp(r.topup)}</td><td className="border border-black p-2 text-center">{r.tk20 || 0}</td><td className="border border-black p-2 text-center">{r.tk50 || 0}</td><td className="border border-black p-2 text-center">{r.ntk20 || 0}</td><td className="border border-black p-2 text-center">{r.ntk50 || 0}</td><td className="border border-black p-2 text-right font-bold">{formatRp(getRowTotal(r))}</td><td className="border border-black p-1 text-center italic text-gray-700">{r.ket}</td></tr>))}
-              <tr className="bg-gray-300 font-bold"><td className="border border-black p-2 text-center" colSpan="3">JUMLAH</td><td className="border border-black p-2 text-right">{formatRp(currentSums.topup)}</td><td className="border border-black p-2 text-center">{currentSums.tk20}</td><td className="border border-black p-2 text-center">{currentSums.tk50}</td><td className="border border-black p-2 text-center">{currentSums.ntk20}</td><td className="border border-black p-2 text-center">{currentSums.ntk50}</td><td className="border border-black p-2 text-right">{formatRp(currentSums.total)}</td><td className="border border-black"></td></tr></tbody></table>
-              <div className="flex justify-end mt-4"><div className="w-64 border border-black p-2 font-bold text-sm bg-gray-200"><div className="flex justify-between border-b border-black pb-1 mb-1"><span>ECAR :</span><span>{formatRp(extraData.ecarRaw)}</span></div><div className="flex justify-between"><span>FOTO SATWA :</span><span>{formatRp(extraData.fotoRaw)}</span></div></div></div>
-            </div>
-          </div>
-
-          {/* TAB: CETAK REKAP */}
-          <div className={activeTab === 'print2' ? 'block print:block' : 'hidden print:hidden'}>
-            <div className="mb-4 print:hidden flex justify-between items-center bg-blue-50 p-4 rounded-xl border max-w-[210mm] mx-auto"><div className="flex items-center gap-3"><span className="text-sm font-bold">Pilih Sesi Cetak:</span><select value={filter.sesi} onChange={e => setFilter({...filter, sesi: e.target.value})} className="border rounded-lg p-2 outline-none font-bold"><option value="">Semua Sesi Digabung</option><option value="Siang">Hanya Sesi Siang</option><option value="Malam">Hanya Sesi Malam</option></select></div><button onClick={() => window.print()} className="bg-blue-600 text-white font-bold py-2 px-6 rounded-lg">Cetak Dokumen</button></div>
-            <div className="bg-white max-w-[210mm] min-h-[297mm] mx-auto p-10 shadow-xl border print:shadow-none print:p-0 font-serif text-[14px]">
-              <div className="text-center mb-6"><h1 className="text-xl font-bold">TAMAN MARGASATWA RAGUNAN</h1><p className="text-lg">JAKARTA - INDONESIA</p></div>
-              <div className="border-y-2 border-black py-2 mb-4 text-center"><h2 className="font-bold text-[15px]">REKAP PENJUALAN KARTU JAKCARD DAN TOP UP</h2></div>
-              <div className="flex justify-between font-bold mb-6"><div>Hari/Tanggal : {filter.startDate === filter.endDate ? formatTanggalIndonesia(filter.startDate) : (filter.startDate ? `${filter.startDate} s/d ${filter.endDate}` : 'Semua Tanggal')}</div><div className="uppercase">SESI : {filter.sesi ? filter.sesi : 'SIANG & MALAM'}</div></div>
-              <div className="border border-black pb-8">
-                {/* KARTU */}
-                <div className="flex px-4 pt-6"><div className="w-32 font-bold">KARTU</div><div className="flex-1"><div className="flex mb-2"><div className="w-16 font-bold text-center">20</div><div className="w-8 text-center">=</div><div className="w-16 text-center font-bold">{currentSums.tk20}</div><div className="w-12 text-center">X</div><div className="w-8">Rp.</div><div className="w-20 text-right">25.000</div><div className="w-8 text-center">=</div><div className="w-8">Rp.</div><div className="w-24 text-right">{formatRp(reportData.kartu20Rp)}</div></div><div className="flex mb-1"><div className="w-16 font-bold text-center">50</div><div className="w-8 text-center">=</div><div className="w-16 text-center font-bold">{currentSums.tk50}</div><div className="w-12 text-center">X</div><div className="w-8">Rp.</div><div className="w-20 text-right">25.000</div><div className="w-8 text-center">=</div><div className="w-8 border-b border-black pb-1">Rp.</div><div className="w-24 text-right border-b border-black pb-1">{formatRp(reportData.kartu50Rp)}</div><div className="w-8 text-center font-bold">(+)</div></div><div className="flex mb-6 font-bold"><div className="w-60"></div><div className="w-28 text-center">Jumlah</div><div className="w-8 text-center">:</div><div className="w-8">Rp.</div><div className="w-24 text-right">{formatRp(totalKartu)}</div></div></div></div>
-                {/* SALDO */}
-                <div className="flex px-4"><div className="w-32 font-bold">SALDO</div><div className="flex-1"><div className="flex mb-2"><div className="w-16 font-bold text-center">20</div><div className="w-8 text-center">=</div><div className="w-16 text-center font-bold">{currentSums.tk20}</div><div className="w-12 text-center">X</div><div className="w-8">Rp.</div><div className="w-20 text-right">20.000</div><div className="w-8 text-center">=</div><div className="w-8">Rp.</div><div className="w-24 text-right">{formatRp(reportData.saldo20Rp)}</div></div><div className="flex mb-1"><div className="w-16 font-bold text-center">50</div><div className="w-8 text-center">=</div><div className="w-16 text-center font-bold">{currentSums.tk50}</div><div className="w-12 text-center">X</div><div className="w-8">Rp.</div><div className="w-20 text-right">50.000</div><div className="w-8 text-center">=</div><div className="w-8 border-b border-black pb-1">Rp.</div><div className="w-24 text-right border-b border-black pb-1">{formatRp(reportData.saldo50Rp)}</div><div className="w-8 text-center font-bold">(+)</div></div><div className="flex mb-8 font-bold"><div className="w-60"></div><div className="w-28 text-center">Jumlah</div><div className="w-8 text-center">:</div><div className="w-8">Rp.</div><div className="w-24 text-right">{formatRp(totalSaldo)}</div></div></div></div>
-                {/* TOTAL */}
-                <div className="flex px-4 mb-8"><div className="w-[60%] font-bold"><div className="flex mb-2"><div className="w-40">Penjualan Jakcard</div><div className="w-8 text-center">=</div><div className="w-8">Rp.</div><div className="w-24 text-right">{formatRp(totalPenjualanJakcard)}</div></div><div className="flex mb-1"><div className="w-40">Top Up</div><div className="w-8 text-center">=</div><div className="w-8 border-b border-black pb-1">Rp.</div><div className="w-24 text-right border-b border-black pb-1">{formatRp(currentSums.topup)}</div><div className="w-8 text-center font-bold">(+)</div></div><div className="flex mt-2"><div className="w-40 text-right pr-4">TOTAL</div><div className="w-8 text-center">=</div><div className="w-8 text-lg">Rp.</div><div className="w-24 text-right text-lg">{formatRp(grandTotal)}</div></div></div><div className="w-[40%] pl-4 font-bold text-[13px]"><div className="mb-2">Penjualan Jakcard Non Tunai</div><div className="flex mb-2 font-normal"><div className="w-32">Kartu Saldo. 20</div><div className="w-4 text-center">=</div><div className="w-12 text-right font-bold pr-2">{currentSums.ntk20}</div><div className="w-16">(pcs)</div></div><div className="flex font-normal"><div className="w-32">Kartu Saldo. 50</div><div className="w-4 text-center">=</div><div className="w-12 text-right font-bold pr-2">{currentSums.ntk50}</div><div className="w-16">(pcs)</div></div></div></div>
-                {/* EXTRA */}
-                <div className="px-4 font-bold pb-4"><div className="flex mb-2"><div className="w-32">E-Car</div><div className="w-8 text-center">=</div><div className="w-8">Rp.</div><div className="w-24 text-right mr-4">{formatRp(extraData.ecarRaw)}</div><div className="w-8 text-center">{extraData.ecarTrx}</div><div className="w-12">TRX</div></div><div className="flex"><div className="w-32">Foto Satwa Jinak</div><div className="w-8 text-center">=</div><div className="w-8">Rp.</div><div className="w-24 text-right mr-4">{formatRp(extraData.fotoRaw)}</div><div className="w-8 text-center">{extraData.fotoTrx}</div><div className="w-12">TRX</div></div></div>
-              </div>
-              <div className="border border-t-0 border-black px-8 py-6 flex justify-between font-bold text-center h-48"><div className="flex flex-col justify-between w-64"><div>Bendahara Penerima</div><div className="border-b border-black">{penandatangan.bendahara}</div></div><div className="flex flex-col justify-between w-64"><div>Petugas Pemeriksa Setoran</div><div className="border-b border-black">{penandatangan.pemeriksa}</div></div></div>
-            </div>
-          </div>
-
-          {/* TAB: LAPORAN */}
+          {/* TAB: LAPORAN (DIROMBAK URUTANNYA) */}
           {activeTab === 'laporan' && (
             <div className="bg-white rounded-xl shadow-lg p-4 md:p-6 flex flex-col h-full border-t-4 border-indigo-600 max-w-full">
-              <h2 className="text-xl font-bold mb-4 border-b pb-2 text-indigo-900">Filter & Analisis Data Keseluruhan</h2>
+              <h2 className="text-xl font-bold mb-4 border-b pb-2 text-indigo-900">Analisis Data & Detail Transaksi</h2>
+              
+              {/* 1. FILTER (ATAS) */}
               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-4 mb-6 bg-indigo-50 p-4 rounded-xl border">
                 <div><label className="block text-xs font-bold text-indigo-900 mb-1">Dari Tanggal</label><input type="date" value={filter.startDate} onChange={e => setFilter({...filter, startDate: e.target.value})} className="w-full border p-2 rounded-lg outline-none shadow-sm" /></div>
                 <div><label className="block text-xs font-bold text-indigo-900 mb-1">Sampai Tanggal</label><input type="date" value={filter.endDate} onChange={e => setFilter({...filter, endDate: e.target.value})} className="w-full border p-2 rounded-lg outline-none shadow-sm" /></div>
@@ -532,23 +523,8 @@ export default function App() {
                 <div><label className="block text-xs font-bold text-indigo-900 mb-1">Petugas</label><select value={filter.petugas} onChange={e => setFilter({...filter, petugas: e.target.value})} className="w-full border p-2 rounded-lg outline-none"><option value="">Semua Petugas</option>{petugasList.map((p, i) => <option key={i} value={p}>{p}</option>)}</select></div>
               </div>
 
-              {/* RANGKUMAN TRANSAKSI */}
-              <div className="bg-purple-50 rounded-xl border p-5 mb-6">
-                <h3 className="text-lg font-bold text-purple-900 mb-4 border-b border-purple-200 pb-2">Ringkasan Transaksi Khusus (Berdasarkan Filter)</h3>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                  <div className="bg-white p-4 rounded-lg shadow-sm border"><h4 className="font-bold text-purple-800 text-sm mb-3">Penjualan Kartu</h4>
-                    <div className="text-sm text-gray-700">
-                      <div className="flex justify-between border-b pb-1"><span>K.20 <span className="text-[10px] text-gray-400">(T:{currentSums.tk20} | NT:{currentSums.ntk20})</span></span><span className="font-bold">{currentSums.tk20 + currentSums.ntk20} Unit</span></div>
-                      <div className="flex justify-between border-b pb-1 pt-1"><span>K.50 <span className="text-[10px] text-gray-400">(T:{currentSums.tk50} | NT:{currentSums.ntk50})</span></span><span className="font-bold">{currentSums.tk50 + currentSums.ntk50} Unit</span></div>
-                      <div className="flex justify-between pt-2 font-bold text-purple-700"><span>Total Rp</span><span>Rp {formatRp(((currentSums.tk20 + currentSums.ntk20)*45000) + ((currentSums.tk50 + currentSums.ntk50)*75000))}</span></div>
-                    </div>
-                  </div>
-                  <div className="bg-white p-4 rounded-lg shadow-sm border"><h4 className="font-bold text-blue-800 text-sm mb-3">Pendapatan E-Car</h4><div className="flex justify-between items-center mb-2"><span className="text-sm">Total TRX</span><span className="font-bold text-blue-700 text-lg">{extraData.ecarTrx}</span></div><div className="flex justify-between items-center pt-2 border-t font-bold text-blue-800"><span>Total Rp</span><span>Rp {formatRp(extraData.ecarRaw)}</span></div></div>
-                  <div className="bg-white p-4 rounded-lg shadow-sm border"><h4 className="font-bold text-orange-800 text-sm mb-3">Pendapatan Foto Satwa</h4><div className="flex justify-between items-center mb-2"><span className="text-sm">Total TRX</span><span className="font-bold text-orange-700 text-lg">{extraData.fotoTrx}</span></div><div className="flex justify-between items-center pt-2 border-t font-bold text-orange-800"><span>Total Rp</span><span>Rp {formatRp(extraData.fotoRaw)}</span></div></div>
-                </div>
-              </div>
-
-              <div className="flex-1 overflow-auto border rounded-xl custom-scrollbar">
+              {/* 2. DETAIL TRANSAKSI (TENGAH) */}
+              <div className="flex-1 overflow-auto border rounded-xl custom-scrollbar mb-8">
                 <table className="min-w-full text-xs md:text-sm text-left"><thead className="bg-indigo-100 text-indigo-900 sticky top-0"><tr>
                   <th className="p-3 cursor-pointer" onClick={() => requestSort('tanggal')}>Tanggal {sortConfig.key === 'tanggal' && (sortConfig.direction === 'asc' ? '↑' : '↓')}</th>
                   <th className="p-3 cursor-pointer" onClick={() => requestSort('sesi')}>Sesi {sortConfig.key === 'sesi' && (sortConfig.direction === 'asc' ? '↑' : '↓')}</th>
@@ -558,13 +534,74 @@ export default function App() {
                 </tr></thead>
                 <tbody className="divide-y bg-white">{filteredAndSortedRecords.map(r => (
                   <tr key={r.id} className="hover:bg-indigo-50"><td className="p-3">{r.tanggal}<span className="block text-[10px] text-gray-400">Jam {r.jam_input}</span></td><td className="p-3 font-semibold text-blue-700">{r.sesi}</td><td className="p-3 font-medium">{r.nama}</td><td className="p-3">{r.lokasi}</td><td className="p-3 text-right">{formatRp(r.topup)}</td><td className="p-3 text-center border-l">{r.tk20 || 0}</td><td className="p-3 text-center">{r.tk50 || 0}</td><td className="p-3 text-center border-l">{r.ntk20 || 0}</td><td className="p-3 text-center">{r.ntk50 || 0}</td><td className="p-3 text-right font-bold text-indigo-700">{formatRp(getRowTotal(r))}</td><td className="p-3 italic text-gray-500 text-xs truncate max-w-[150px]">{r.ket}</td><td className="p-3 text-center"><button onClick={() => { setActiveTab('input'); handleEdit(r); }} className="text-blue-500 font-bold mr-2">Edit</button><button onClick={() => hapusData(r.id)} className="text-red-500 font-bold">Del</button></td></tr>
-                ))}</tbody>
+                ))}
+                {filteredAndSortedRecords.length === 0 && <tr><td colSpan="12" className="p-12 text-center text-gray-400 font-bold italic text-lg">Tidak ada data untuk filter yang dipilih.</td></tr>}
+                </tbody>
                 {filteredAndSortedRecords.length > 0 && (
-                  <tfoot className="bg-indigo-100 font-bold sticky bottom-0"><tr><td colSpan="4" className="p-4 text-right">Total :</td><td className="p-4 text-right">{formatRp(currentSums.topup)}</td><td className="p-4 text-center border-l">{currentSums.tk20}</td><td className="p-4 text-center">{currentSums.tk50}</td><td className="p-4 text-center border-l">{currentSums.ntk20}</td><td className="p-4 text-center">{currentSums.ntk50}</td><td className="p-4 text-right text-base">{formatRp(currentSums.total)}</td><td colSpan="2"></td></tr></tfoot>
+                  <tfoot className="bg-indigo-100 font-bold sticky bottom-0"><tr><td colSpan="4" className="p-4 text-right uppercase tracking-wider text-xs">Total Berdasarkan Filter :</td><td className="p-4 text-right font-black">{formatRp(currentSums.topup)}</td><td className="p-4 text-center border-l">{currentSums.tk20}</td><td className="p-4 text-center">{currentSums.tk50}</td><td className="p-4 text-center border-l">{currentSums.ntk20}</td><td className="p-4 text-center">{currentSums.ntk50}</td><td className="p-4 text-right text-base text-indigo-900">{formatRp(currentSums.total)}</td><td colSpan="2"></td></tr></tfoot>
                 )}</table>
+              </div>
+
+              {/* 3. REKAPAN KESELURUHAN (BAWAH) */}
+              <div className="bg-purple-50 rounded-xl border-2 border-purple-200 p-6 shadow-sm">
+                <div className="flex justify-between items-center mb-6 border-b border-purple-200 pb-3">
+                  <h3 className="text-xl font-black text-purple-900 uppercase tracking-tighter italic">Rekapitulasi Angka Keseluruhan</h3>
+                  <div className="bg-purple-200 text-purple-900 px-4 py-1 rounded-full text-xs font-bold uppercase">{filter.startDate} s/d {filter.endDate}</div>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+                  <div className="bg-white p-5 rounded-2xl shadow-sm border-l-8 border-purple-600">
+                    <h4 className="font-black text-purple-800 text-xs uppercase mb-4 tracking-widest">Penjualan Jakcard</h4>
+                    <div className="space-y-3">
+                      <div className="flex justify-between items-center bg-gray-50 p-2 rounded-lg">
+                         <span className="text-xs font-bold">K.20 <span className="text-[10px] text-gray-400">(T:{currentSums.tk20} | NT:{currentSums.ntk20})</span></span>
+                         <span className="font-black text-purple-900">{currentSums.tk20 + currentSums.ntk20} Unit</span>
+                      </div>
+                      <div className="flex justify-between items-center bg-gray-50 p-2 rounded-lg">
+                         <span className="text-xs font-bold">K.50 <span className="text-[10px] text-gray-400">(T:{currentSums.tk50} | NT:{currentSums.ntk50})</span></span>
+                         <span className="font-black text-purple-900">{currentSums.tk50 + currentSums.ntk50} Unit</span>
+                      </div>
+                      <div className="pt-3 border-t-2 border-dashed flex justify-between items-center">
+                         <span className="text-xs font-bold uppercase">Nilai Rupiah</span>
+                         <span className="font-black text-xl text-purple-700">Rp {formatRp(((currentSums.tk20 + currentSums.ntk20)*45000) + ((currentSums.tk50 + currentSums.ntk50)*75000))}</span>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="bg-white p-5 rounded-2xl shadow-sm border-l-8 border-blue-600">
+                    <h4 className="font-black text-blue-800 text-xs uppercase mb-4 tracking-widest">Pendapatan E-Car</h4>
+                    <div className="flex justify-between items-center mb-4 bg-blue-50 p-3 rounded-xl border border-blue-100">
+                       <span className="text-xs font-bold">Total Transaksi (TRX)</span>
+                       <span className="font-black text-blue-700 text-2xl">{extraData.ecarTrx}</span>
+                    </div>
+                    <div className="pt-3 border-t-2 border-dashed flex justify-between items-center">
+                       <span className="text-xs font-bold uppercase">Nilai Rupiah</span>
+                       <span className="font-black text-xl text-blue-800">Rp {formatRp(extraData.ecarRaw)}</span>
+                    </div>
+                  </div>
+                  <div className="bg-white p-5 rounded-2xl shadow-sm border-l-8 border-orange-600">
+                    <h4 className="font-black text-orange-800 text-xs uppercase mb-4 tracking-widest">Pendapatan Foto Satwa</h4>
+                    <div className="flex justify-between items-center mb-4 bg-orange-50 p-3 rounded-xl border border-orange-100">
+                       <span className="text-xs font-bold">Total Transaksi (TRX)</span>
+                       <span className="font-black text-orange-700 text-2xl">{extraData.fotoTrx}</span>
+                    </div>
+                    <div className="pt-3 border-t-2 border-dashed flex justify-between items-center">
+                       <span className="text-xs font-bold uppercase">Nilai Rupiah</span>
+                       <span className="font-black text-xl text-orange-800">Rp {formatRp(extraData.fotoRaw)}</span>
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
           )}
+
+          {/* TAB: CETAK TABEL (HIDDEN IN VIEW) */}
+          <div className={activeTab === 'print1' ? 'block print:block max-w-7xl mx-auto' : 'hidden print:hidden'}>
+            <div className="mb-4 print:hidden flex flex-col sm:flex-row justify-between items-center bg-blue-50 p-4 rounded-xl border"><div className="flex items-center gap-3"><span className="text-sm font-bold">Pilih Sesi Cetak:</span><select value={filter.sesi} onChange={e => setFilter({...filter, sesi: e.target.value})} className="border rounded-lg p-2 outline-none font-bold"><option value="">Semua Sesi Digabung</option><option value="Siang">Hanya Sesi Siang</option><option value="Malam">Hanya Sesi Malam</option></select></div><button onClick={() => window.print()} className="bg-blue-600 text-white font-bold py-2 px-6 rounded-lg">Cetak Dokumen</button></div>
+            <div className="bg-white p-4 md:p-8 w-full min-h-[297mm] shadow-lg print:shadow-none font-sans text-xs sm:text-sm border"><div className="text-center mb-6 border-b pb-4"><h1 className="font-bold text-lg md:text-xl uppercase">REKAP PENERIMAAN SETORAN PENJUALAN KARTU JAKCARD DAN TOPUP</h1><h2 className="font-bold text-md uppercase">UNIT PENGELOLA TAMAN MARGASATWA RAGUNAN</h2></div><div className="flex justify-between mb-3 font-bold text-sm"><div>Hari/Tanggal : {filter.startDate === filter.endDate ? formatTanggalIndonesia(filter.startDate) : (filter.startDate ? `${filter.startDate} s/d ${filter.endDate}` : 'Semua Tanggal')}</div><div className="uppercase bg-gray-200 px-3 py-1 rounded">Sesi : {filter.sesi ? filter.sesi : 'SIANG & MALAM'}</div></div>
+              <table className="w-full border-collapse border border-black mb-4 text-[11px] md:text-xs"><thead className="bg-gray-200 text-center font-bold"><tr><th className="border border-black p-2" rowSpan="2">NO</th><th className="border border-black p-2" rowSpan="2">Nama</th><th className="border border-black p-2" rowSpan="2">Lokasi</th><th className="border border-black p-2" rowSpan="2">Jumlah TOP UP (Rp)</th><th className="border border-black p-2" colSpan="2">Tunai</th><th className="border border-black p-2" colSpan="2">Non Tunai</th><th className="border border-black p-2" rowSpan="2">Jumlah (Rp)</th><th className="border border-black p-2" rowSpan="2">KET</th></tr><tr><th className="border border-black p-1">K. 20</th><th className="border border-black p-1">K. 50</th><th className="border border-black p-1">K. 20</th><th className="border border-black p-1">K. 50</th></tr></thead>
+              <tbody>{filteredAndSortedRecords.map((r, i) => (<tr key={r.id} className="even:bg-gray-50"><td className="border border-black p-2 text-center">{i + 1}</td><td className="border border-black p-2">{r.nama}</td><td className="border border-black p-2">{r.lokasi}</td><td className="border border-black p-2 text-right">{formatRp(r.topup)}</td><td className="border border-black p-2 text-center">{r.tk20 || 0}</td><td className="border border-black p-2 text-center">{r.tk50 || 0}</td><td className="border border-black p-2 text-center">{r.ntk20 || 0}</td><td className="border border-black p-2 text-center">{r.ntk50 || 0}</td><td className="border border-black p-2 text-right font-bold">{formatRp(getRowTotal(r))}</td><td className="border border-black p-1 text-center italic text-gray-700">{r.ket}</td></tr>))}
+              <tr className="bg-gray-300 font-bold"><td className="border border-black p-2 text-center" colSpan="3">JUMLAH</td><td className="border border-black p-2 text-right">{formatRp(currentSums.topup)}</td><td className="border border-black p-2 text-center">{currentSums.tk20}</td><td className="border border-black p-2 text-center">{currentSums.tk50}</td><td className="border border-black p-2 text-center">{currentSums.ntk20}</td><td className="border border-black p-2 text-center">{currentSums.ntk50}</td><td className="border border-black p-2 text-right">{formatRp(currentSums.total)}</td><td className="border border-black"></td></tr></tbody></table>
+            </div>
+          </div>
 
         </div>
       </main>
