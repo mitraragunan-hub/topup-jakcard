@@ -5,7 +5,7 @@ import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged }
 import { getFirestore, collection, doc, addDoc, updateDoc, deleteDoc, onSnapshot, setDoc } from 'firebase/firestore';
 
 // ==========================================
-// KONFIGURASI FIREBASE (MENDUKUNG VERCEL & CANVAS)
+// KONFIGURASI FIREBASE
 // ==========================================
 let app, auth, db, appId;
 
@@ -33,9 +33,7 @@ try {
 }
 
 export default function App() {
-  // ==========================================
-  // JALAN PINTAS UNTUK MENGAKTIFKAN DESAIN SECARA PAKSA
-  // ==========================================
+  // Inject Font & Base Styles
   useEffect(() => {
     if (!document.getElementById('tailwind-cdn')) {
       const script = document.createElement('script');
@@ -43,10 +41,46 @@ export default function App() {
       script.src = 'https://cdn.tailwindcss.com';
       document.head.appendChild(script);
     }
+    if (!document.getElementById('inter-font')) {
+      const link = document.createElement('link');
+      link.id = 'inter-font';
+      link.rel = 'stylesheet';
+      link.href = 'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap';
+      document.head.appendChild(link);
+    }
   }, []);
+
+  // Helpers Tanggal Akurat (Mencegah Bug Zona Waktu)
+  const getTodayStr = () => {
+    const d = new Date();
+    const offset = d.getTimezoneOffset() * 60000;
+    return (new Date(d.getTime() - offset)).toISOString().split('T')[0];
+  };
+
+  const parseLocalDate = (dateString) => {
+    if(!dateString) return new Date();
+    const [y, m, d] = dateString.split('-');
+    return new Date(y, m - 1, d);
+  };
+
+  const formatTanggalStandard = (dateString) => {
+    if(!dateString) return '';
+    const date = parseLocalDate(dateString);
+    const bulan = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Ags', 'Sep', 'Okt', 'Nov', 'Des'];
+    const dd = String(date.getDate()).padStart(2, '0');
+    return `${dd}-${bulan[date.getMonth()]}-${date.getFullYear()}`;
+  };
+
+  const formatTanggalHari = (dateString) => {
+    if(!dateString) return '';
+    const date = parseLocalDate(dateString);
+    const hari = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
+    return `${hari[date.getDay()]}, ${formatTanggalStandard(dateString)}`;
+  };
 
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [activeTab, setActiveTab] = useState('input');
+  const [reportType, setReportType] = useState('umum'); 
   
   const [user, setUser] = useState(null);
   const [isLoadingDB, setIsLoadingDB] = useState(true);
@@ -55,47 +89,44 @@ export default function App() {
   const [lokasiList, setLokasiList] = useState([]);
   const [penandatangan, setPenandatangan] = useState({ bendahara: '', pemeriksa: '' });
 
+  // State utama FormData, ditambah topupDetails untuk menyimpan rincian EDC
   const [formData, setFormData] = useState({
-    tanggal: new Date().toISOString().split('T')[0],
-    nama: '', lokasi: '', topupDisplay: '', topupRaw: 0, tk20: '', tk50: '', ntk20: '', ntk50: '', ket: ''
+    tanggal: getTodayStr(),
+    nama: '', lokasi: '', topupDisplay: '', topupRaw: 0, topupDetails: [], 
+    tk20: '', tk50: '', ntk20: '', ntk50: '', ket: ''
   });
 
+  // State sementara untuk kalkulator EDC
+  const [tempEdc, setTempEdc] = useState('');
+
   const [editingId, setEditingId] = useState(null);
-  const [extraData, setExtraData] = useState({ ecarDisplay: '', ecarRaw: 0, ecarTrx: 0, fotoDisplay: '', fotoRaw: 0, fotoTrx: 0 });
+  const [extraInputData, setExtraInputData] = useState({ ecarDisplay: '', ecarRaw: 0, ecarTrx: 0, fotoDisplay: '', fotoRaw: 0, fotoTrx: 0 });
 
   const [filter, setFilter] = useState({ 
-    startDate: new Date().toISOString().split('T')[0], 
-    endDate: new Date().toISOString().split('T')[0], 
+    startDate: getTodayStr(), 
+    endDate: getTodayStr(), 
     sesi: '', lokasi: '', petugas: '' 
   });
   const [sortConfig, setSortConfig] = useState({ key: 'tanggal', direction: 'desc' });
 
   const [records, setRecords] = useState([]);
+  const [extraRecords, setExtraRecords] = useState([]);
 
   useEffect(() => {
     const initAuth = async () => {
-      if (!auth) {
-        setIsLoadingDB(false);
-        return;
-      }
+      if (!auth) { setIsLoadingDB(false); return; }
       try {
         if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
           await signInWithCustomToken(auth, __initial_auth_token);
         } else {
           await signInAnonymously(auth);
         }
-      } catch (err) { 
-        console.error("Auth Error:", err); 
-        setIsLoadingDB(false); 
-      }
+      } catch (err) { console.error("Auth Error:", err); setIsLoadingDB(false); }
     };
     initAuth();
 
     if (!auth) return;
-    const unsubscribe = onAuthStateChanged(auth, (u) => {
-      setUser(u);
-      setIsLoadingDB(false); 
-    });
+    const unsubscribe = onAuthStateChanged(auth, (u) => { setUser(u); setIsLoadingDB(false); });
     return () => unsubscribe();
   }, []);
 
@@ -116,8 +147,6 @@ export default function App() {
           penandatangan: { bendahara: 'Evi Irmawati', pemeriksa: 'Hermawati' }
         }).catch(err => console.log("Gagal inisiasi Master DB", err));
       }
-    }, (error) => {
-       console.error("Gagal membaca Master DB:", error);
     });
 
     const recordsRef = collection(db, 'artifacts', appId, 'public', 'data', 'records');
@@ -126,46 +155,46 @@ export default function App() {
       setRecords(recs);
     });
 
-    const extraRef = doc(db, 'artifacts', appId, 'public', 'data', 'daily_extra', filter.startDate);
-    const unsubExtra = onSnapshot(extraRef, (docSnap) => {
+    const extraColRef = collection(db, 'artifacts', appId, 'public', 'data', 'daily_extra');
+    const unsubExtraCol = onSnapshot(extraColRef, (snapshot) => {
+      const recs = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+      setExtraRecords(recs);
+    });
+
+    return () => { unsubMaster(); unsubRecords(); unsubExtraCol(); };
+  }, [user]);
+
+  useEffect(() => {
+    if (!user || !db) return;
+    const extraInputRef = doc(db, 'artifacts', appId, 'public', 'data', 'daily_extra', formData.tanggal);
+    const unsubExtraInput = onSnapshot(extraInputRef, (docSnap) => {
       if (docSnap.exists()) {
         const data = docSnap.data();
-        setExtraData({
+        setExtraInputData({
           ecarRaw: data.ecarRaw || 0, ecarTrx: data.ecarTrx || 0,
           ecarDisplay: data.ecarRaw ? new Intl.NumberFormat('id-ID').format(data.ecarRaw) : '',
           fotoRaw: data.fotoRaw || 0, fotoTrx: data.fotoTrx || 0,
           fotoDisplay: data.fotoRaw ? new Intl.NumberFormat('id-ID').format(data.fotoRaw) : ''
         });
       } else {
-        setExtraData({ ecarDisplay: '', ecarRaw: 0, ecarTrx: 0, fotoDisplay: '', fotoRaw: 0, fotoTrx: 0 });
+        setExtraInputData({ ecarDisplay: '', ecarRaw: 0, ecarTrx: 0, fotoDisplay: '', fotoRaw: 0, fotoTrx: 0 });
       }
     });
-
-    return () => { unsubMaster(); unsubRecords(); unsubExtra(); };
-  }, [user, filter.startDate]);
+    return () => unsubExtraInput();
+  }, [user, formData.tanggal]);
 
   const HARGA_K20 = 45000;
   const HARGA_K50 = 75000;
   const formatRp = (angka) => new Intl.NumberFormat('id-ID').format(angka || 0);
   const getRowTotal = (row) => (row.topup || 0) + ((row.tk20 || 0) * HARGA_K20) + ((row.tk50 || 0) * HARGA_K50);
-  const getActiveSesi = () => new Date().getHours() >= 20 ? 'Malam' : 'Siang';
   
-  const formatTanggalIndonesia = (dateString) => {
-    if(!dateString) return '';
-    const date = new Date(dateString);
-    const hari = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
-    const bulan = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
-    return `${hari[date.getDay()]}, ${date.getDate()} ${bulan[date.getMonth()]} ${date.getFullYear()}`;
-  };
+  // Logika jam: Jika di atas jam 20:00 (Malam), selain itu Siang.
+  const getActiveSesi = () => new Date().getHours() >= 20 ? 'Malam' : 'Siang';
 
   const updateMasterDB = async (payload) => {
     if (!user) return;
-    try {
-      await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'master'), payload, { merge: true });
-    } catch (error) {
-      console.error("Gagal Simpan Master DB:", error);
-      alert("⚠️ GAGAL MENYIMPAN KE DATABASE!");
-    }
+    try { await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'master'), payload, { merge: true }); } 
+    catch (error) { alert("⚠️ GAGAL MENYIMPAN KE DATABASE!"); }
   };
 
   const [newPetugas, setNewPetugas] = useState('');
@@ -181,21 +210,15 @@ export default function App() {
   const delLokasi = (idx) => updateMasterDB({ lokasi: lokasiList.filter((_, i) => i !== idx) });
 
   const startEditLokasi = (idx) => { setEditLokasiIdx(idx); setEditLokasiValue(lokasiList[idx]); };
-  const saveEditLokasi = (idx) => { 
-    const newList = [...lokasiList]; newList[idx] = editLokasiValue; 
-    updateMasterDB({ lokasi: newList }); setEditLokasiIdx(null); 
-  };
-  
+  const saveEditLokasi = (idx) => { const newList = [...lokasiList]; newList[idx] = editLokasiValue; updateMasterDB({ lokasi: newList }); setEditLokasiIdx(null); };
   const startEditPetugas = (idx) => { setEditPetugasIdx(idx); setEditPetugasValue(petugasList[idx]); };
-  const saveEditPetugas = (idx) => { 
-    const newList = [...petugasList]; newList[idx] = editPetugasValue; 
-    updateMasterDB({ petugas: newList }); setEditPetugasIdx(null); 
-  };
+  const saveEditPetugas = (idx) => { const newList = [...petugasList]; newList[idx] = editPetugasValue; updateMasterDB({ petugas: newList }); setEditPetugasIdx(null); };
 
   const handleEdit = (record) => {
     setFormData({
       tanggal: record.tanggal, nama: record.nama, lokasi: record.lokasi,
       topupDisplay: record.topup ? formatRp(record.topup) : '', topupRaw: record.topup || 0,
+      topupDetails: record.topup_details || [], 
       tk20: record.tk20 || '', tk50: record.tk50 || '', ntk20: record.ntk20 || '', ntk50: record.ntk50 || '', ket: record.ket || ''
     });
     setEditingId(record.id);
@@ -204,7 +227,24 @@ export default function App() {
 
   const cancelEdit = () => {
     setEditingId(null);
-    setFormData(prev => ({ ...prev, nama: '', lokasi: '', topupDisplay: '', topupRaw: 0, tk20: '', tk50: '', ntk20: '', ntk50: '', ket: '' }));
+    setFormData(prev => ({ ...prev, nama: '', lokasi: '', topupDisplay: '', topupRaw: 0, topupDetails: [], tk20: '', tk50: '', ntk20: '', ntk50: '', ket: '' }));
+  };
+
+  // FUNGSI UNTUK KALKULATOR MINI EDC
+  const handleAddEdc = () => {
+    const val = Number(tempEdc.replace(/\D/g, ''));
+    if (val > 0) {
+      const newDetails = [...formData.topupDetails, val];
+      const newTotal = newDetails.reduce((a, b) => a + b, 0);
+      setFormData(prev => ({ ...prev, topupDetails: newDetails, topupRaw: newTotal, topupDisplay: formatRp(newTotal) }));
+      setTempEdc(''); 
+    }
+  };
+
+  const handleRemoveEdc = (index) => {
+    const newDetails = formData.topupDetails.filter((_, i) => i !== index);
+    const newTotal = newDetails.reduce((a, b) => a + b, 0);
+    setFormData(prev => ({ ...prev, topupDetails: newDetails, topupRaw: newTotal, topupDisplay: newTotal ? formatRp(newTotal) : '' }));
   };
 
   const handleExtraChange = async (e) => {
@@ -218,12 +258,10 @@ export default function App() {
       const trxValue = name === 'ecarDisplay' ? (rawNumber / 250000) : (rawNumber / 5000);
       
       try {
-        await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'daily_extra', filter.startDate), {
+        await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'daily_extra', formData.tanggal), {
           [rawKey]: rawNumber, [trxKey]: trxValue
         }, { merge: true });
-      } catch (error) {
-         console.error("Gagal simpan Ecar/Foto:", error);
-      }
+      } catch (error) { console.error("Gagal simpan Ecar/Foto:", error); }
     }
   };
 
@@ -232,8 +270,12 @@ export default function App() {
     if (name === 'topupDisplay') {
       const rawValue = value.replace(/\D/g, '');
       const rawNumber = Number(rawValue);
-      setFormData(prev => ({ ...prev, topupDisplay: rawValue ? formatRp(rawNumber) : '', topupRaw: rawNumber }));
-    } else { setFormData(prev => ({ ...prev, [name]: value })); }
+      // Jika pengguna mengetik manual di kolom utama, kita asumsikan detail EDC diabaikan / direset agar tidak tabrakan datanya
+      const resetDetails = formData.topupDetails.length > 0 ? [] : formData.topupDetails;
+      setFormData(prev => ({ ...prev, topupDisplay: rawValue ? formatRp(rawNumber) : '', topupRaw: rawNumber, topupDetails: resetDetails }));
+    } else { 
+      setFormData(prev => ({ ...prev, [name]: value })); 
+    }
   };
   
   const handleSubmit = async (e) => {
@@ -242,7 +284,7 @@ export default function App() {
 
     const payload = {
       tanggal: formData.tanggal, nama: formData.nama, lokasi: formData.lokasi,
-      topup: formData.topupRaw, ket: formData.ket,
+      topup: formData.topupRaw, topup_details: formData.topupDetails, ket: formData.ket,
       tk20: Number(formData.tk20) || 0, tk50: Number(formData.tk50) || 0,
       ntk20: Number(formData.ntk20) || 0, ntk50: Number(formData.ntk50) || 0,
     };
@@ -253,26 +295,20 @@ export default function App() {
         setEditingId(null);
       } else {
         const now = new Date();
-        payload.jam_input = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
+        payload.jam_input = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
         payload.sesi = getActiveSesi();
         await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'records'), payload);
       }
-      setFormData(prev => ({ ...prev, nama: '', lokasi: '', topupDisplay: '', topupRaw: 0, tk20: '', tk50: '', ntk20: '', ntk50: '', ket: '' }));
-      alert("✅ Data berhasil disimpan!");
-    } catch (error) {
-      console.error("Gagal input setoran:", error);
-      alert("⚠️ GAGAL MENYIMPAN KE CLOUD!");
-    }
+      setFormData(prev => ({ ...prev, nama: '', lokasi: '', topupDisplay: '', topupRaw: 0, topupDetails: [], tk20: '', tk50: '', ntk20: '', ntk50: '', ket: '' }));
+      alert("✅ Data berhasil disimpan dengan aman!");
+    } catch (error) { alert("⚠️ GAGAL MENYIMPAN KE CLOUD!"); }
   };
   
   const hapusData = async (id) => { 
     if (!user) return;
-    if(window.confirm('Hapus data ini dari cloud?')) {
-      try {
-        await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'records', id)); 
-      } catch (error) {
-        alert("⚠️ Gagal menghapus!");
-      }
+    if(window.confirm('Hapus permanen data ini dari cloud?')) {
+      try { await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'records', id)); } 
+      catch (error) { alert("⚠️ Gagal menghapus!"); }
     }
   };
 
@@ -294,6 +330,14 @@ export default function App() {
     return result;
   }, [records, filter, sortConfig]);
 
+  const filteredExtraRecords = useMemo(() => {
+    let result = [...extraRecords];
+    if (filter.startDate) result = result.filter(r => r.id >= filter.startDate);
+    if (filter.endDate) result = result.filter(r => r.id <= filter.endDate);
+    result.sort((a, b) => b.id.localeCompare(a.id)); 
+    return result;
+  }, [extraRecords, filter.startDate, filter.endDate]);
+
   const requestSort = (key) => {
     let direction = 'asc';
     if (sortConfig.key === key && sortConfig.direction === 'asc') direction = 'desc';
@@ -313,6 +357,13 @@ export default function App() {
   const todaySesiRecords = useMemo(() => records.filter(r => r.tanggal === formData.tanggal && r.sesi === getActiveSesi()), [records, formData.tanggal]);
   const livePreviewSums = calculateSums(todaySesiRecords);
 
+  const extraSums = useMemo(() => {
+    return filteredExtraRecords.reduce((acc, curr) => ({
+      ecarRaw: acc.ecarRaw + (curr.ecarRaw || 0), ecarTrx: acc.ecarTrx + (curr.ecarTrx || 0),
+      fotoRaw: acc.fotoRaw + (curr.fotoRaw || 0), fotoTrx: acc.fotoTrx + (curr.fotoTrx || 0),
+    }), { ecarRaw: 0, ecarTrx: 0, fotoRaw: 0, fotoTrx: 0 });
+  }, [filteredExtraRecords]);
+
   const reportData = {
     kartu20Rp: currentSums.tk20 * 25000, kartu50Rp: currentSums.tk50 * 25000,
     saldo20Rp: currentSums.tk20 * 20000, saldo50Rp: currentSums.tk50 * 50000,
@@ -323,110 +374,119 @@ export default function App() {
   const grandTotal = totalPenjualanJakcard + currentSums.topup;
   
   if (isLoadingDB) return (
-    <div className="flex flex-col h-screen items-center justify-center bg-gray-50 text-indigo-800 font-bold text-xl animate-pulse">
-      <svg className="w-12 h-12 mb-4 text-indigo-600 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
-      Menghubungkan ke Cloud Database TMR...
+    <div className="flex flex-col h-screen items-center justify-center bg-slate-50 text-emerald-800 font-semibold text-lg animate-pulse" style={{ fontFamily: "'Inter', sans-serif" }}>
+      <svg className="w-10 h-10 mb-3 text-emerald-600 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
+      Menyinkronkan dengan Cloud TMR...
     </div>
   );
 
   return (
-    <div className="flex h-screen bg-gray-50 font-sans text-gray-800 overflow-hidden relative">
-      <aside className={`fixed inset-y-0 left-0 z-50 w-64 bg-green-800 text-white transform transition-transform duration-300 ease-in-out ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} print:hidden shadow-2xl`}>
-        <div className="p-5 flex justify-between items-center border-b border-green-700">
-          <h1 className="text-xl font-extrabold tracking-wider italic">TMR JAKCARD & TOPUP</h1>
-          <button onClick={() => setIsSidebarOpen(false)} className="text-white hover:text-gray-300 focus:outline-none transition-colors">
+    <div className="flex h-screen bg-slate-50 text-slate-800 overflow-hidden relative" style={{ fontFamily: "'Inter', sans-serif" }}>
+      {/* SIDEBAR */}
+      <aside className={`fixed inset-y-0 left-0 z-50 w-64 bg-slate-900 text-slate-100 transform transition-transform duration-300 ease-in-out ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} print:hidden shadow-2xl`}>
+        <div className="p-5 flex justify-between items-center border-b border-slate-800 bg-slate-950">
+          <h1 className="text-lg font-bold tracking-wide text-emerald-400">REKAP TOP-UP DAN JAKCARD</h1>
+          <button onClick={() => setIsSidebarOpen(false)} className="text-slate-400 hover:text-white focus:outline-none transition-colors">
             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path></svg>
           </button>
         </div>
-        <nav className="p-4 space-y-2 text-sm font-medium overflow-y-auto h-[calc(100vh-80px)] custom-scrollbar">
-          <div className="text-green-300 uppercase text-xs font-bold mb-2 mt-4 px-2">Operasional</div>
-          <button onClick={() => { setActiveTab('input'); setIsSidebarOpen(false); }} className={`w-full flex items-center gap-3 px-3 py-3 rounded-lg transition-colors ${activeTab === 'input' ? 'bg-green-700 text-white' : 'text-green-100 hover:bg-green-700'}`}>
+        <nav className="p-4 space-y-1.5 text-sm font-medium overflow-y-auto h-[calc(100vh-80px)] custom-scrollbar">
+          <div className="text-slate-500 uppercase text-[10px] font-bold tracking-widest mb-2 mt-4 px-3">Modul Operasional</div>
+          <button onClick={() => { setActiveTab('input'); setIsSidebarOpen(false); }} className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors ${activeTab === 'input' ? 'bg-emerald-600 text-white shadow-md' : 'text-slate-300 hover:bg-slate-800 hover:text-white'}`}>
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path></svg> Input Setoran
           </button>
           
-          <div className="text-green-300 uppercase text-xs font-bold mb-2 mt-6 px-2">Pencetakan</div>
-          <button onClick={() => { setActiveTab('print1'); setIsSidebarOpen(false); }} className={`w-full flex items-center gap-3 px-3 py-3 rounded-lg transition-colors ${activeTab === 'print1' ? 'bg-green-700 text-white' : 'text-green-100 hover:bg-green-700'}`}>
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"></path></svg> Cetak Tabel
+          <div className="text-slate-500 uppercase text-[10px] font-bold tracking-widest mb-2 mt-6 px-3">Modul Cetak Dokumen</div>
+          <button onClick={() => { setActiveTab('print1'); setIsSidebarOpen(false); }} className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors ${activeTab === 'print1' ? 'bg-emerald-600 text-white shadow-md' : 'text-slate-300 hover:bg-slate-800 hover:text-white'}`}>
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"></path></svg> Cetak Tabel Harian
           </button>
-          <button onClick={() => { setActiveTab('print2'); setIsSidebarOpen(false); }} className={`w-full flex items-center gap-3 px-3 py-3 rounded-lg transition-colors ${activeTab === 'print2' ? 'bg-green-700 text-white' : 'text-green-100 hover:bg-green-700'}`}>
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg> Cetak Rekap
+          <button onClick={() => { setActiveTab('print2'); setIsSidebarOpen(false); }} className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors ${activeTab === 'print2' ? 'bg-emerald-600 text-white shadow-md' : 'text-slate-300 hover:bg-slate-800 hover:text-white'}`}>
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg> Cetak Rekapitulasi
           </button>
 
-          <div className="text-green-300 uppercase text-xs font-bold mb-2 mt-6 px-2">Sistem Database</div>
-          <button onClick={() => { setActiveTab('laporan'); setIsSidebarOpen(false); }} className={`w-full flex items-center gap-3 px-3 py-3 rounded-lg transition-colors ${activeTab === 'laporan' ? 'bg-green-700 text-white' : 'text-green-100 hover:bg-green-700'}`}>
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path></svg> Laporan & Detail Analitik
+          <div className="text-slate-500 uppercase text-[10px] font-bold tracking-widest mb-2 mt-6 px-3">Sistem & Database</div>
+          <button onClick={() => { setActiveTab('laporan'); setReportType('umum'); setIsSidebarOpen(false); }} className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors ${activeTab === 'laporan' ? 'bg-emerald-600 text-white shadow-md' : 'text-slate-300 hover:bg-slate-800 hover:text-white'}`}>
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path></svg> Analitik & Laporan
           </button>
-          <button onClick={() => { setActiveTab('master'); setIsSidebarOpen(false); }} className={`w-full flex items-center gap-3 px-3 py-3 rounded-lg transition-colors ${activeTab === 'master' ? 'bg-green-700 text-white' : 'text-green-100 hover:bg-green-700'}`}>
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg> Data Master
+          <button onClick={() => { setActiveTab('master'); setIsSidebarOpen(false); }} className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors ${activeTab === 'master' ? 'bg-emerald-600 text-white shadow-md' : 'text-slate-300 hover:bg-slate-800 hover:text-white'}`}>
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg> Master Data Sistem
           </button>
         </nav>
       </aside>
 
-      {isSidebarOpen && <div className="fixed inset-0 bg-gray-900 bg-opacity-50 z-40 print:hidden backdrop-blur-sm transition-opacity" onClick={() => setIsSidebarOpen(false)}></div>}
+      {isSidebarOpen && <div className="fixed inset-0 bg-slate-900 bg-opacity-60 z-40 print:hidden backdrop-blur-sm transition-opacity" onClick={() => setIsSidebarOpen(false)}></div>}
 
       <main className="flex-1 flex flex-col h-full w-full overflow-hidden">
-        <header className="bg-white shadow-sm print:hidden flex items-center p-4 border-b z-10">
-          <button onClick={() => setIsSidebarOpen(true)} className="mr-4 text-gray-700 hover:text-green-700 focus:outline-none transition transform hover:scale-105 bg-gray-100 p-2 rounded-md">
+        {/* HEADER ATAS */}
+        <header className="bg-white shadow-sm print:hidden flex items-center px-6 py-4 border-b border-slate-200 z-10">
+          <button onClick={() => setIsSidebarOpen(true)} className="mr-4 text-slate-500 hover:text-emerald-600 focus:outline-none transition-colors">
             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 12h16M4 18h16"></path></svg>
           </button>
           
           <div className="flex justify-between items-center w-full">
-            <h2 className="text-lg md:text-xl font-bold text-gray-800 capitalize italic">
-              {activeTab === 'input' && 'Input Setoran Harian Cloud'}
-              {activeTab === 'master' && 'Master Data Cloud'}
-              {activeTab === 'print1' && 'Pencetakan Tabel Setoran'}
+            <h2 className="text-lg font-bold text-slate-800 tracking-tight">
+              {activeTab === 'input' && 'Input Transaksi Harian'}
+              {activeTab === 'master' && 'Konfigurasi Master Data'}
+              {activeTab === 'print1' && 'Pencetakan Tabel Harian'}
               {activeTab === 'print2' && 'Pencetakan Rekapitulasi'}
-              {activeTab === 'laporan' && 'Laporan & Detail Analitik'}
+              {activeTab === 'laporan' && 'Laporan & Analitik Terpadu'}
             </h2>
-            <div className="hidden sm:flex items-center gap-2 bg-green-50 px-3 py-1.5 rounded-full border border-green-200">
-               <span className="relative flex h-3 w-3"><span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${user ? 'bg-green-400' : 'bg-yellow-400'}`}></span><span className={`relative inline-flex rounded-full h-3 w-3 ${user ? 'bg-green-500' : 'bg-yellow-500'}`}></span></span>
-               <span className={`text-xs font-bold tracking-wide ${user ? 'text-green-800' : 'text-yellow-800'}`}>
-                 {user ? 'Cloud Database Active' : 'Koneksi Offline'}
+            <div className="hidden sm:flex items-center gap-2 bg-emerald-50 px-3 py-1.5 rounded-full border border-emerald-200">
+               <span className="relative flex h-2.5 w-2.5"><span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${user ? 'bg-emerald-400' : 'bg-amber-400'}`}></span><span className={`relative inline-flex rounded-full h-2.5 w-2.5 ${user ? 'bg-emerald-500' : 'bg-amber-500'}`}></span></span>
+               <span className={`text-xs font-semibold tracking-wide ${user ? 'text-emerald-700' : 'text-amber-700'}`}>
+                 {user ? 'Cloud Aktif' : 'Mode Offline'}
                </span>
             </div>
           </div>
         </header>
 
-        <div className="flex-1 overflow-auto p-4 md:p-8 bg-gray-50 print:p-0 print:bg-white print:overflow-visible">
+        <div className="flex-1 overflow-auto p-4 md:p-8 bg-slate-50/50 print:p-0 print:bg-white print:overflow-visible custom-scrollbar">
           
           {/* TAB: DATA MASTER */}
           {activeTab === 'master' && (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 max-w-7xl mx-auto">
-              <div className="bg-white p-5 rounded-xl shadow-md border-t-4 border-green-500">
-                <h3 className="font-bold text-lg mb-4 text-green-700 border-b pb-2">Penanda Tangan</h3>
+              <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
+                <h3 className="font-bold text-base text-slate-800 mb-4 border-b border-slate-100 pb-3 flex items-center gap-2">
+                  <svg className="w-5 h-5 text-emerald-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg>
+                  Pejabat Pengesah
+                </h3>
                 <div className="space-y-4">
                   <div>
-                    <label className="block text-sm font-semibold mb-1">Bendahara Penerima</label>
-                    <input type="text" value={penandatangan.bendahara} onChange={e => { const v = e.target.value; setPenandatangan({...penandatangan, bendahara: v}); updateMasterDB({ penandatangan: {...penandatangan, bendahara: v} }); }} className="w-full border p-2 rounded bg-gray-50 outline-none focus:border-green-400" />
+                    <label className="block text-xs font-semibold text-slate-500 mb-1.5 uppercase tracking-wider">Bendahara Penerima</label>
+                    <input type="text" value={penandatangan.bendahara} onChange={e => { const v = e.target.value; setPenandatangan({...penandatangan, bendahara: v}); updateMasterDB({ penandatangan: {...penandatangan, bendahara: v} }); }} className="w-full border border-slate-300 rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-all text-sm font-medium text-slate-800" />
                   </div>
                   <div>
-                    <label className="block text-sm font-semibold mb-1">Petugas Pemeriksa</label>
-                    <input type="text" value={penandatangan.pemeriksa} onChange={e => { const v = e.target.value; setPenandatangan({...penandatangan, pemeriksa: v}); updateMasterDB({ penandatangan: {...penandatangan, pemeriksa: v} }); }} className="w-full border p-2 rounded bg-gray-50 outline-none focus:border-green-400" />
+                    <label className="block text-xs font-semibold text-slate-500 mb-1.5 uppercase tracking-wider">Petugas Pemeriksa</label>
+                    <input type="text" value={penandatangan.pemeriksa} onChange={e => { const v = e.target.value; setPenandatangan({...penandatangan, pemeriksa: v}); updateMasterDB({ penandatangan: {...penandatangan, pemeriksa: v} }); }} className="w-full border border-slate-300 rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-all text-sm font-medium text-slate-800" />
                   </div>
                 </div>
               </div>
-              <div className="bg-white p-5 rounded-xl shadow-md border-t-4 border-blue-500">
-                <h3 className="font-bold text-lg mb-4 text-blue-700 border-b pb-2">Daftar Loket</h3>
+
+              <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
+                <h3 className="font-bold text-base text-slate-800 mb-4 border-b border-slate-100 pb-3 flex items-center gap-2">
+                  <svg className="w-5 h-5 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"></path><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+                  Daftar Lokasi/Loket
+                </h3>
                 <div className="flex gap-2 mb-4">
-                  <input type="text" value={newLokasi} onChange={e => setNewLokasi(e.target.value)} placeholder="Nama Loket Baru" className="flex-1 border p-2 rounded bg-gray-50 outline-none focus:border-blue-400" />
-                  <button onClick={addLokasi} className="bg-blue-600 text-white px-4 rounded hover:bg-blue-700 font-bold">+</button>
+                  <input type="text" value={newLokasi} onChange={e => setNewLokasi(e.target.value)} placeholder="Ketik lokasi baru..." className="flex-1 border border-slate-300 rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-blue-500 text-sm font-medium" />
+                  <button onClick={addLokasi} className="bg-blue-600 text-white px-4 rounded-lg hover:bg-blue-700 font-bold transition-colors">+</button>
                 </div>
-                <ul className="max-h-60 overflow-y-auto space-y-2 p-1 pr-2 custom-scrollbar">
+                <ul className="max-h-60 overflow-y-auto space-y-2 pr-1 custom-scrollbar">
                   {lokasiList.map((lok, i) => (
-                    <li key={i} className="flex justify-between items-center bg-gray-50 p-3 border rounded shadow-sm hover:bg-white transition">
+                    <li key={i} className="flex justify-between items-center bg-slate-50 p-2.5 border border-slate-100 rounded-lg group hover:border-slate-300 transition-colors">
                       {editLokasiIdx === i ? (
-                        <input type="text" value={editLokasiValue} onChange={(e) => setEditLokasiValue(e.target.value)} className="flex-1 border p-1 mr-2 rounded outline-none focus:border-blue-400 text-sm" autoFocus />
-                      ) : ( <span className="text-sm font-medium">{lok}</span> )}
-                      <div className="flex gap-1 ml-2">
+                        <input type="text" value={editLokasiValue} onChange={(e) => setEditLokasiValue(e.target.value)} className="flex-1 border border-blue-400 p-1 mr-2 rounded outline-none text-sm font-medium" autoFocus />
+                      ) : ( <span className="text-sm font-medium text-slate-700">{lok}</span> )}
+                      <div className="flex gap-1 ml-2 opacity-50 group-hover:opacity-100 transition-opacity">
                         {editLokasiIdx === i ? (
                           <>
-                            <button onClick={() => saveEditLokasi(i)} className="text-green-600 font-bold text-xs bg-green-50 px-2 py-1 rounded">Simpan</button>
-                            <button onClick={() => setEditLokasiIdx(null)} className="text-gray-500 font-bold text-xs bg-gray-100 px-2 py-1 rounded">Batal</button>
+                            <button onClick={() => saveEditLokasi(i)} className="text-emerald-600 font-semibold text-xs px-2 py-1 hover:bg-emerald-50 rounded">OK</button>
+                            <button onClick={() => setEditLokasiIdx(null)} className="text-slate-500 font-semibold text-xs px-2 py-1 hover:bg-slate-200 rounded">X</button>
                           </>
                         ) : (
                           <>
-                            <button onClick={() => startEditLokasi(i)} className="text-blue-500 font-bold text-xs bg-blue-50 px-2 py-1 rounded">Edit</button>
-                            <button onClick={() => delLokasi(i)} className="text-red-500 font-bold text-xs bg-red-50 px-2 py-1 rounded">Hapus</button>
+                            <button onClick={() => startEditLokasi(i)} className="text-blue-600 font-medium text-xs px-2 py-1 hover:bg-blue-50 rounded">Edit</button>
+                            <button onClick={() => delLokasi(i)} className="text-red-500 font-medium text-xs px-2 py-1 hover:bg-red-50 rounded">Hapus</button>
                           </>
                         )}
                       </div>
@@ -434,28 +494,32 @@ export default function App() {
                   ))}
                 </ul>
               </div>
-              <div className="bg-white p-5 rounded-xl shadow-md border-t-4 border-orange-500">
-                <h3 className="font-bold text-lg mb-4 text-orange-700 border-b pb-2">Daftar Petugas</h3>
+
+              <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
+                <h3 className="font-bold text-base text-slate-800 mb-4 border-b border-slate-100 pb-3 flex items-center gap-2">
+                  <svg className="w-5 h-5 text-orange-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"></path></svg>
+                  Daftar Petugas
+                </h3>
                 <div className="flex gap-2 mb-4">
-                  <input type="text" value={newPetugas} onChange={e => setNewPetugas(e.target.value)} placeholder="Petugas Baru" className="flex-1 border p-2 rounded bg-gray-50 outline-none focus:border-orange-400" />
-                  <button onClick={addPetugas} className="bg-orange-600 text-white px-4 rounded hover:bg-orange-700 font-bold">+</button>
+                  <input type="text" value={newPetugas} onChange={e => setNewPetugas(e.target.value)} placeholder="Ketik nama petugas..." className="flex-1 border border-slate-300 rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-orange-500 text-sm font-medium" />
+                  <button onClick={addPetugas} className="bg-orange-500 text-white px-4 rounded-lg hover:bg-orange-600 font-bold transition-colors">+</button>
                 </div>
-                <ul className="max-h-60 overflow-y-auto space-y-2 p-1 pr-2 custom-scrollbar">
+                <ul className="max-h-60 overflow-y-auto space-y-2 pr-1 custom-scrollbar">
                   {petugasList.map((pet, i) => (
-                    <li key={i} className="flex justify-between items-center bg-gray-50 p-3 border rounded shadow-sm hover:bg-white transition">
+                    <li key={i} className="flex justify-between items-center bg-slate-50 p-2.5 border border-slate-100 rounded-lg group hover:border-slate-300 transition-colors">
                       {editPetugasIdx === i ? (
-                        <input type="text" value={editPetugasValue} onChange={(e) => setEditPetugasValue(e.target.value)} className="flex-1 border p-1 mr-2 rounded outline-none text-sm" autoFocus />
-                      ) : ( <span className="text-sm font-medium">{pet}</span> )}
-                      <div className="flex gap-1 ml-2">
+                        <input type="text" value={editPetugasValue} onChange={(e) => setEditPetugasValue(e.target.value)} className="flex-1 border border-orange-400 p-1 mr-2 rounded outline-none text-sm font-medium" autoFocus />
+                      ) : ( <span className="text-sm font-medium text-slate-700">{pet}</span> )}
+                      <div className="flex gap-1 ml-2 opacity-50 group-hover:opacity-100 transition-opacity">
                         {editPetugasIdx === i ? (
                           <>
-                            <button onClick={() => saveEditPetugas(i)} className="text-green-600 font-bold text-xs bg-green-50 px-2 py-1 rounded">Simpan</button>
-                            <button onClick={() => setEditPetugasIdx(null)} className="text-gray-500 font-bold text-xs bg-gray-100 px-2 py-1 rounded">Batal</button>
+                            <button onClick={() => saveEditPetugas(i)} className="text-emerald-600 font-semibold text-xs px-2 py-1 hover:bg-emerald-50 rounded">OK</button>
+                            <button onClick={() => setEditPetugasIdx(null)} className="text-slate-500 font-semibold text-xs px-2 py-1 hover:bg-slate-200 rounded">X</button>
                           </>
                         ) : (
                           <>
-                            <button onClick={() => startEditPetugas(i)} className="text-orange-500 font-bold text-xs bg-orange-50 px-2 py-1 rounded">Edit</button>
-                            <button onClick={() => delPetugas(i)} className="text-red-500 font-bold text-xs bg-red-50 px-2 py-1 rounded">Hapus</button>
+                            <button onClick={() => startEditPetugas(i)} className="text-orange-600 font-medium text-xs px-2 py-1 hover:bg-orange-50 rounded">Edit</button>
+                            <button onClick={() => delPetugas(i)} className="text-red-500 font-medium text-xs px-2 py-1 hover:bg-red-50 rounded">Hapus</button>
                           </>
                         )}
                       </div>
@@ -468,48 +532,220 @@ export default function App() {
 
           {/* TAB: INPUT FORM */}
           {activeTab === 'input' && (
-            <div className="max-w-7xl mx-auto space-y-6">
-              <div className="bg-white rounded-xl shadow-lg overflow-hidden border-t-4 border-green-600">
-                <div className="p-6 md:p-10">
+            <div className="max-w-6xl mx-auto space-y-8">
+              
+              {/* SECTION 1: FORM UTAMA */}
+              <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+                <div className="bg-slate-50 px-6 py-4 border-b border-slate-200">
+                  <h3 className="font-bold text-slate-800 flex items-center gap-2">
+                    <svg className="w-5 h-5 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+                    Formulir Setoran Jakcard & Topup
+                  </h3>
+                </div>
+                <div className="p-6 md:p-8">
                   <form onSubmit={handleSubmit} className="space-y-8">
+                    {/* Baris 1: Info Dasar */}
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                      <div><label className="block text-sm font-bold text-gray-700 mb-2">Tanggal Input</label><input type="date" name="tanggal" value={formData.tanggal} onChange={handleChange} required className="w-full border rounded-lg p-3 outline-none focus:border-green-400" /></div>
-                      <div><label className="block text-sm font-bold text-gray-700 mb-2">Petugas</label><select name="nama" value={formData.nama} onChange={handleChange} required className="w-full border rounded-lg p-3 outline-none focus:border-green-400"><option value="">-- Pilih --</option>{petugasList.map((p, i) => <option key={i} value={p}>{p}</option>)}</select></div>
-                      <div><label className="block text-sm font-bold text-gray-700 mb-2">Lokasi</label><select name="lokasi" value={formData.lokasi} onChange={handleChange} required className="w-full border rounded-lg p-3 outline-none focus:border-green-400"><option value="">-- Pilih --</option>{lokasiList.map((l, i) => <option key={i} value={l}>{l}</option>)}</select></div>
+                      <div>
+                        <div className="flex justify-between items-end mb-2">
+                          <label className="block text-sm font-semibold text-slate-700">Tanggal Transaksi</label>
+                          <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded-full uppercase tracking-wider border border-emerald-200 shadow-sm">
+                            {formatTanggalHari(formData.tanggal)}
+                          </span>
+                        </div>
+                        <input type="date" name="tanggal" value={formData.tanggal} max={getTodayStr()} onChange={handleChange} required className="w-full border border-slate-300 rounded-xl p-3 outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 bg-slate-50/50 font-semibold text-slate-800 cursor-pointer transition-all" />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-semibold text-slate-700 mb-2">Nama Petugas</label>
+                        <select name="nama" value={formData.nama} onChange={handleChange} required className="w-full border border-slate-300 rounded-xl p-3 outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 font-medium text-slate-800 bg-white transition-all">
+                          <option value="">-- Pilih Petugas --</option>{petugasList.map((p, i) => <option key={i} value={p}>{p}</option>)}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-semibold text-slate-700 mb-2">Lokasi Penjualan</label>
+                        <select name="lokasi" value={formData.lokasi} onChange={handleChange} required className="w-full border border-slate-300 rounded-xl p-3 outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 font-medium text-slate-800 bg-white transition-all">
+                          <option value="">-- Pilih Lokasi --</option>{lokasiList.map((l, i) => <option key={i} value={l}>{l}</option>)}
+                        </select>
+                      </div>
                     </div>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                      <div className="bg-blue-50 p-6 rounded-xl border border-blue-100 shadow-inner"><h3 className="text-base font-bold text-blue-900 mb-4 border-b pb-2">Tunai (Qty)</h3><div className="flex gap-6"><div className="w-1/2"><label className="block text-sm mb-2">K.20</label><input type="number" name="tk20" value={formData.tk20} onChange={handleChange} className="w-full border rounded-lg p-3 outline-none text-center font-bold" /></div><div className="w-1/2"><label className="block text-sm mb-2">K.50</label><input type="number" name="tk50" value={formData.tk50} onChange={handleChange} className="w-full border rounded-lg p-3 outline-none text-center font-bold" /></div></div></div>
-                      <div className="bg-orange-50 p-6 rounded-xl border border-orange-100 shadow-inner"><h3 className="text-base font-bold text-orange-900 mb-4 border-b pb-2">Non-Tunai (Qty)</h3><div className="flex gap-6"><div className="w-1/2"><label className="block text-sm mb-2">K.20</label><input type="number" name="ntk20" value={formData.ntk20} onChange={handleChange} className="w-full border rounded-lg p-3 outline-none text-center font-bold" /></div><div className="w-1/2"><label className="block text-sm mb-2">K.50</label><input type="number" name="ntk50" value={formData.ntk50} onChange={handleChange} className="w-full border rounded-lg p-3 outline-none text-center font-bold" /></div></div></div>
-                    </div>
+
+                    {/* Baris 2: Kartu */}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                      <div><label className="block text-sm font-bold text-gray-700 mb-2">Jumlah Top Up (Rp)</label><div className="relative"><span className="absolute inset-y-0 left-0 pl-4 flex items-center text-gray-500 font-bold text-lg">Rp</span><input type="text" name="topupDisplay" value={formData.topupDisplay} onChange={handleChange} className="w-full border rounded-lg pl-12 p-3 outline-none font-bold text-xl text-green-800" placeholder="0" /></div></div>
-                      <div><label className="block text-sm font-bold text-gray-700 mb-2">Keterangan Tambahan</label><input type="text" name="ket" value={formData.ket} onChange={handleChange} className="w-full border rounded-lg p-3 outline-none bg-gray-50" /></div>
+                      <div className="bg-blue-50/50 p-6 rounded-2xl border border-blue-100">
+                        <h3 className="text-sm font-bold text-blue-900 mb-4 flex items-center gap-2"><div className="w-2 h-2 rounded-full bg-blue-500"></div> Pembayaran Tunai (Pcs)</h3>
+                        <div className="flex gap-4">
+                          <div className="w-1/2">
+                            <label className="block text-xs font-semibold text-slate-600 mb-1.5">Kartu 20K</label>
+                            <input type="number" name="tk20" value={formData.tk20} onChange={handleChange} className="w-full border border-slate-300 rounded-xl p-3 outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-center font-bold text-slate-800 transition-all" placeholder="0" />
+                          </div>
+                          <div className="w-1/2">
+                            <label className="block text-xs font-semibold text-slate-600 mb-1.5">Kartu 50K</label>
+                            <input type="number" name="tk50" value={formData.tk50} onChange={handleChange} className="w-full border border-slate-300 rounded-xl p-3 outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-center font-bold text-slate-800 transition-all" placeholder="0" />
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="bg-orange-50/50 p-6 rounded-2xl border border-orange-100">
+                        <h3 className="text-sm font-bold text-orange-900 mb-4 flex items-center gap-2"><div className="w-2 h-2 rounded-full bg-orange-500"></div> Pembayaran Non-Tunai (Pcs)</h3>
+                        <div className="flex gap-4">
+                          <div className="w-1/2">
+                            <label className="block text-xs font-semibold text-slate-600 mb-1.5">Kartu 20K</label>
+                            <input type="number" name="ntk20" value={formData.ntk20} onChange={handleChange} className="w-full border border-slate-300 rounded-xl p-3 outline-none focus:ring-2 focus:ring-orange-500 focus:border-orange-500 text-center font-bold text-slate-800 transition-all" placeholder="0" />
+                          </div>
+                          <div className="w-1/2">
+                            <label className="block text-xs font-semibold text-slate-600 mb-1.5">Kartu 50K</label>
+                            <input type="number" name="ntk50" value={formData.ntk50} onChange={handleChange} className="w-full border border-slate-300 rounded-xl p-3 outline-none focus:ring-2 focus:ring-orange-500 focus:border-orange-500 text-center font-bold text-slate-800 transition-all" placeholder="0" />
+                          </div>
+                        </div>
+                      </div>
                     </div>
-                    <div className="flex justify-end pt-6 border-t mt-8">
-                      {editingId && <button type="button" onClick={cancelEdit} className="bg-gray-400 text-white font-bold py-3 px-8 rounded-xl mr-4 hover:bg-gray-500 transition">Batal Edit</button>}
-                      <button type="submit" className={`${editingId ? 'bg-blue-600 hover:bg-blue-700' : 'bg-green-600 hover:bg-green-700'} text-white font-bold py-3 px-12 rounded-xl shadow-lg transition`}>{editingId ? 'Update Cloud' : 'Simpan ke Cloud'}</button>
+
+                    {/* Baris 3: Topup & Ket (DENGAN KALKULATOR EDC) */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      <div className="space-y-3">
+                        <div>
+                          <label className="block text-sm font-semibold text-slate-700 mb-2">Total Nominal Top Up (Rp)</label>
+                          <div className="relative">
+                            <span className="absolute inset-y-0 left-0 pl-4 flex items-center text-slate-400 font-bold">Rp</span>
+                            <input type="text" name="topupDisplay" value={formData.topupDisplay} onChange={handleChange} className="w-full border border-slate-300 rounded-xl pl-12 p-3 outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 font-bold text-lg text-slate-800 transition-all bg-white" placeholder="0" />
+                          </div>
+                        </div>
+
+                        {/* Kalkulator EDC Mini */}
+                        <div className="bg-emerald-50/60 p-4 rounded-xl border border-emerald-100">
+                           <div className="flex justify-between items-center mb-2">
+                             <span className="text-[10px] font-bold text-emerald-800 uppercase tracking-widest flex items-center gap-1.5"><svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z"></path></svg> Kalkulator Settlement EDC</span>
+                             <span className="text-[9px] text-emerald-600 bg-emerald-100 px-1.5 py-0.5 rounded font-semibold border border-emerald-200">Opsional</span>
+                           </div>
+                           <div className="flex gap-2">
+                             <input type="text" value={tempEdc} onChange={e => {
+                                const val = e.target.value.replace(/\D/g, '');
+                                setTempEdc(val ? formatRp(Number(val)) : '');
+                             }} placeholder="Ketik nominal struk EDC..." className="flex-1 border border-emerald-200 rounded-lg p-2.5 outline-none focus:border-emerald-500 text-sm font-semibold bg-white" 
+                             onKeyDown={(e) => { if(e.key === 'Enter') { e.preventDefault(); handleAddEdc(); } }} />
+                             <button type="button" onClick={handleAddEdc} className="bg-emerald-600 text-white px-4 py-2 rounded-lg text-xs font-bold hover:bg-emerald-700 transition shadow-sm">+ Tambah</button>
+                           </div>
+                           
+                           {/* List Rincian yang sudah ditambah */}
+                           {formData.topupDetails && formData.topupDetails.length > 0 && (
+                             <div className="mt-3 flex flex-wrap gap-2 pt-3 border-t border-emerald-200/60">
+                               {formData.topupDetails.map((nominal, idx) => (
+                                 <div key={idx} className="bg-white border border-emerald-200 text-emerald-700 text-[11px] font-bold px-2.5 py-1.5 rounded-lg flex items-center gap-2 shadow-sm">
+                                   Rp {formatRp(nominal)}
+                                   <button type="button" onClick={() => handleRemoveEdc(idx)} className="text-red-400 hover:text-red-600 font-black text-sm">&times;</button>
+                                 </div>
+                               ))}
+                             </div>
+                           )}
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-semibold text-slate-700 mb-2">Keterangan (Opsional)</label>
+                        <textarea rows="4" name="ket" value={formData.ket} onChange={handleChange} className="w-full border border-slate-300 rounded-xl p-3 outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 font-medium text-slate-700 transition-all resize-none" placeholder="Misal: Mesin EDC Error" />
+                      </div>
+                    </div>
+
+                    <div className="flex justify-end pt-6 border-t border-slate-200 mt-8 gap-4">
+                      {editingId && <button type="button" onClick={cancelEdit} className="bg-white border border-slate-300 text-slate-700 font-semibold py-3 px-8 rounded-xl hover:bg-slate-50 transition-all">Batal Edit</button>}
+                      <button type="submit" className={`${editingId ? 'bg-blue-600 hover:bg-blue-700 shadow-blue-500/30' : 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-500/30'} text-white font-bold py-3 px-10 rounded-xl shadow-lg transition-all transform hover:-translate-y-0.5`}>
+                        {editingId ? 'Update Data Transaksi' : 'Simpan Transaksi Jakcard'}
+                      </button>
                     </div>
                   </form>
                 </div>
               </div>
 
-              <div className="bg-white rounded-xl shadow-lg border overflow-hidden">
-                <div className="bg-indigo-50 p-4 border-b flex justify-between items-center"><h3 className="font-bold text-indigo-900 text-lg">Monitor Input Hari Ini ({getActiveSesi()})</h3><div className="text-right"><div className="text-xs text-gray-500 font-semibold uppercase tracking-widest">Total Top Up</div><div className="text-xl font-bold text-green-600">Rp {formatRp(livePreviewSums.topup)}</div></div></div>
-                <div className="overflow-x-auto p-4 custom-scrollbar">
-                  <table className="min-w-full text-xs text-left border rounded"><thead className="bg-gray-100 text-gray-700 font-bold uppercase tracking-tighter text-[10px]"><tr><th className="p-3 border">Jam</th><th className="p-3 border">Petugas</th><th className="p-3 border">Lokasi</th><th className="p-3 border text-right">Top Up</th><th className="p-3 border text-center text-blue-800">T.K20</th><th className="p-3 border text-center text-blue-800">T.K50</th><th className="p-3 border text-center text-orange-800">NT.K20</th><th className="p-3 border text-center text-orange-800">NT.K50</th><th className="p-3 border text-center">Aksi</th></tr></thead>
-                  <tbody className="divide-y">{todaySesiRecords.map(r => (<tr key={r.id} className="hover:bg-gray-50"><td className="p-3 border font-medium text-gray-500">{r.jam_input}</td><td className="p-3 border font-bold text-indigo-900">{r.nama}</td><td className="p-3 border">{r.lokasi}</td><td className="p-3 border text-right font-bold text-green-700">{formatRp(r.topup)}</td><td className="p-3 border text-center font-bold text-blue-600">{r.tk20}</td><td className="p-3 border text-center font-bold text-blue-600">{r.tk50}</td><td className="p-3 border text-center font-bold text-orange-600">{r.ntk20}</td><td className="p-3 border text-center font-bold text-orange-600">{r.ntk50}</td><td className="p-3 border text-center"><button onClick={() => handleEdit(r)} className="text-blue-600 font-bold hover:underline mr-2">Edit</button><button onClick={() => hapusData(r.id)} className="text-red-500 font-bold hover:underline">Del</button></td></tr>))}
-                  {todaySesiRecords.length === 0 && <tr><td colSpan="9" className="p-10 text-center text-gray-400 italic font-medium">Belum ada input transaksi untuk sesi ini.</td></tr>}
+              {/* SECTION 2: MONITOR TRANSAKSI (Tampilan dipisah K.20 K.50) */}
+              <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+                <div className="bg-slate-50 p-5 border-b border-slate-200 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                  <div>
+                    <h3 className="font-bold text-slate-800 text-base">Monitor Transaksi Sesi {getActiveSesi()}</h3>
+                    <p className="text-xs font-medium text-slate-500 mt-1">
+                      Data tercatat untuk tanggal: <span className="font-bold text-emerald-600">{formatTanggalStandard(formData.tanggal)}</span>
+                    </p>
+                  </div>
+                  <div className="text-right bg-white border border-slate-200 px-4 py-2 rounded-xl shadow-sm">
+                    <div className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">Total Top Up Terkumpul</div>
+                    <div className="text-lg font-black text-emerald-600 leading-tight">Rp {formatRp(livePreviewSums.topup)}</div>
+                  </div>
+                </div>
+                <div className="overflow-x-auto p-0">
+                  <table className="min-w-full text-sm text-left"><thead className="bg-slate-50/80 text-slate-600 font-bold uppercase tracking-wider text-[10px] border-b border-slate-200">
+                    <tr>
+                      <th className="p-4" rowSpan="2">Waktu</th>
+                      <th className="p-4" rowSpan="2">Petugas</th>
+                      <th className="p-4" rowSpan="2">Lokasi</th>
+                      <th className="p-4 text-right" rowSpan="2">Top Up (Rp)</th>
+                      <th className="p-2 text-center border-l border-slate-200" colSpan="2">Tunai (Pcs)</th>
+                      <th className="p-2 text-center border-l border-slate-200" colSpan="2">Non-Tunai (Pcs)</th>
+                      <th className="p-4 text-center border-l border-slate-200" rowSpan="2">Aksi</th>
+                    </tr>
+                    <tr className="border-t border-slate-200">
+                      <th className="p-2 text-center border-l border-slate-200 text-[9px] text-blue-600">K.20</th>
+                      <th className="p-2 text-center text-[9px] text-blue-600">K.50</th>
+                      <th className="p-2 text-center border-l border-slate-200 text-[9px] text-orange-600">K.20</th>
+                      <th className="p-2 text-center text-[9px] text-orange-600">K.50</th>
+                    </tr>
+                    </thead>
+                  <tbody className="divide-y divide-slate-100">{todaySesiRecords.map(r => (
+                    <tr key={r.id} className="hover:bg-slate-50 transition-colors">
+                      <td className="p-4 font-medium text-slate-500 text-xs whitespace-nowrap">{r.jam_input} WIB</td>
+                      <td className="p-4 font-semibold text-slate-800">{r.nama}</td>
+                      <td className="p-4 text-slate-600">{r.lokasi}</td>
+                      <td className="p-4 text-right font-bold text-emerald-600">
+                         {formatRp(r.topup)}
+                         {r.topup_details && r.topup_details.length > 0 && (
+                            <div className="text-[9px] text-slate-400 font-semibold mt-1">({r.topup_details.length} struk)</div>
+                         )}
+                      </td>
+                      <td className="p-4 text-center font-bold text-blue-600 text-xs border-l border-slate-100">{r.tk20 || 0}</td>
+                      <td className="p-4 text-center font-bold text-blue-600 text-xs">{r.tk50 || 0}</td>
+                      <td className="p-4 text-center font-bold text-orange-600 text-xs border-l border-slate-100">{r.ntk20 || 0}</td>
+                      <td className="p-4 text-center font-bold text-orange-600 text-xs">{r.ntk50 || 0}</td>
+                      <td className="p-4 text-center border-l border-slate-100"><div className="flex justify-center gap-3"><button onClick={() => handleEdit(r)} className="text-blue-600 font-semibold hover:text-blue-800 transition-colors text-xs">Edit</button><button onClick={() => hapusData(r.id)} className="text-red-500 font-semibold hover:text-red-700 transition-colors text-xs">Hapus</button></div></td>
+                    </tr>
+                  ))}
+                  {todaySesiRecords.length === 0 && <tr><td colSpan="9" className="p-12 text-center text-slate-400 font-medium italic">Belum ada input transaksi di tanggal {formatTanggalStandard(formData.tanggal)} untuk Sesi {getActiveSesi()}.</td></tr>}
                   </tbody></table>
                 </div>
               </div>
 
-              <div className="bg-white rounded-xl shadow-lg border border-gray-200 overflow-hidden border-t-4 border-purple-500">
-                <div className="bg-purple-50 p-4 border-b">
-                  <h3 className="font-bold text-purple-900 text-lg flex items-center gap-2">Input Pendapatan Tambahan</h3>
+              {/* SECTION 3: PENDAPATAN TAMBAHAN */}
+              <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+                <div className="bg-indigo-50/50 p-5 border-b border-indigo-100">
+                  <h3 className="font-bold text-indigo-900 text-base flex items-center gap-2">
+                    <svg className="w-5 h-5 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                    Pendapatan Ekstra: <span className="text-indigo-600">{formatTanggalStandard(formData.tanggal)}</span>
+                  </h3>
                 </div>
-                <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div className="bg-gray-50 p-5 rounded-xl border hover:border-purple-300 transition-colors"><h4 className="font-bold text-gray-800 mb-4 border-b pb-2">Pendapatan E-Car</h4><div className="flex gap-4"><div className="flex-1"><label className="block text-xs font-bold mb-2">Total Rupiah</label><input type="text" name="ecarDisplay" value={extraData.ecarDisplay} onChange={handleExtraChange} className="w-full border rounded-lg p-2.5 font-bold outline-none focus:border-purple-400" placeholder="0" /></div><div className="w-28"><label className="block text-xs font-bold mb-2 text-center">TRX</label><input type="number" value={extraData.ecarTrx} readOnly className="w-full border rounded-lg p-2.5 bg-gray-200 text-center font-bold text-purple-700" /></div></div></div>
-                  <div className="bg-gray-50 p-5 rounded-xl border hover:border-purple-300 transition-colors"><h4 className="font-bold text-gray-800 mb-4 border-b pb-2">Pendapatan Foto Satwa</h4><div className="flex gap-4"><div className="flex-1"><label className="block text-xs font-bold mb-2">Total Rupiah</label><input type="text" name="fotoDisplay" value={extraData.fotoDisplay} onChange={handleExtraChange} className="w-full border rounded-lg p-2.5 font-bold outline-none focus:border-purple-400" placeholder="0" /></div><div className="w-28"><label className="block text-xs font-bold mb-2 text-center">TRX</label><input type="number" value={extraData.fotoTrx} readOnly className="w-full border rounded-lg p-2.5 bg-gray-200 text-center font-bold text-purple-700" /></div></div></div>
+                <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-8">
+                  <div className="group relative">
+                    <h4 className="font-bold text-slate-800 mb-3 text-sm">Pendapatan E-Car</h4>
+                    <div className="flex gap-4">
+                      <div className="flex-1">
+                        <label className="block text-xs font-semibold text-slate-500 mb-1.5">Total Rupiah</label>
+                        <input type="text" name="ecarDisplay" value={extraInputData.ecarDisplay} onChange={handleExtraChange} className="w-full border border-slate-300 rounded-xl p-3 font-bold text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all" placeholder="0" />
+                      </div>
+                      <div className="w-28">
+                        <label className="block text-xs font-semibold text-slate-500 mb-1.5 text-center">Transaksi</label>
+                        <div className="w-full border border-slate-200 rounded-xl p-3 bg-slate-100 text-center font-bold text-indigo-600">{extraInputData.ecarTrx || 0}</div>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="group relative">
+                    <h4 className="font-bold text-slate-800 mb-3 text-sm">Pendapatan Foto Satwa</h4>
+                    <div className="flex gap-4">
+                      <div className="flex-1">
+                        <label className="block text-xs font-semibold text-slate-500 mb-1.5">Total Rupiah</label>
+                        <input type="text" name="fotoDisplay" value={extraInputData.fotoDisplay} onChange={handleExtraChange} className="w-full border border-slate-300 rounded-xl p-3 font-bold text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all" placeholder="0" />
+                      </div>
+                      <div className="w-28">
+                        <label className="block text-xs font-semibold text-slate-500 mb-1.5 text-center">Transaksi</label>
+                        <div className="w-full border border-slate-200 rounded-xl p-3 bg-slate-100 text-center font-bold text-indigo-600">{extraInputData.fotoTrx || 0}</div>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
@@ -517,136 +753,245 @@ export default function App() {
 
           {/* TAB: LAPORAN & DETAIL ANALITIK */}
           {activeTab === 'laporan' && (
-            <div className="bg-white rounded-xl shadow-lg p-4 md:p-6 flex flex-col h-full border-t-4 border-indigo-600 max-w-full">
-              <div className="flex justify-between items-center mb-4 border-b pb-2">
-                <h2 className="text-xl font-bold text-indigo-900 italic uppercase tracking-tighter">Laporan & Detail Analitik</h2>
-                <div className="bg-indigo-100 text-indigo-700 px-3 py-1 rounded-full text-[10px] font-black uppercase">Data Explorer</div>
+            <div className="max-w-7xl mx-auto space-y-6">
+              
+              <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6">
+                <div>
+                  <h2 className="text-xl font-extrabold text-slate-800 tracking-tight mb-2">Laporan & Analitik Terpadu</h2>
+                  <p className="text-sm font-medium text-slate-500">Pusat data rekapan harian dan historis TMR.</p>
+                </div>
+                
+                {/* SUB NAVIGATION TAB */}
+                <div className="flex flex-wrap gap-1.5 bg-slate-100 p-1.5 rounded-xl border border-slate-200 w-full lg:w-auto">
+                  <button onClick={() => setReportType('umum')} className={`px-5 py-2 rounded-lg font-bold text-xs uppercase tracking-wide transition-all flex-1 lg:flex-none text-center ${reportType === 'umum' ? 'bg-white text-emerald-600 shadow-sm border-slate-200' : 'text-slate-500 hover:text-slate-800'}`}>General</button>
+                  <button onClick={() => setReportType('jakcard')} className={`px-5 py-2 rounded-lg font-bold text-xs uppercase tracking-wide transition-all flex-1 lg:flex-none text-center ${reportType === 'jakcard' ? 'bg-white text-emerald-600 shadow-sm border-slate-200' : 'text-slate-500 hover:text-slate-800'}`}>Jakcard</button>
+                  <button onClick={() => setReportType('ecar')} className={`px-5 py-2 rounded-lg font-bold text-xs uppercase tracking-wide transition-all flex-1 lg:flex-none text-center ${reportType === 'ecar' ? 'bg-white text-emerald-600 shadow-sm border-slate-200' : 'text-slate-500 hover:text-slate-800'}`}>E-Car</button>
+                  <button onClick={() => setReportType('foto')} className={`px-5 py-2 rounded-lg font-bold text-xs uppercase tracking-wide transition-all flex-1 lg:flex-none text-center ${reportType === 'foto' ? 'bg-white text-emerald-600 shadow-sm border-slate-200' : 'text-slate-500 hover:text-slate-800'}`}>Foto Satwa</button>
+                </div>
               </div>
               
-              {/* 1. FILTERING */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-4 mb-6 bg-indigo-50 p-4 rounded-xl border border-indigo-100 shadow-sm">
-                <div><label className="block text-[10px] font-black text-indigo-900 mb-1 uppercase">Mulai Tanggal</label><input type="date" value={filter.startDate} onChange={e => setFilter({...filter, startDate: e.target.value})} className="w-full border p-2 rounded-lg outline-none shadow-sm focus:border-indigo-400 text-sm" /></div>
-                <div><label className="block text-[10px] font-black text-indigo-900 mb-1 uppercase">Hingga Tanggal</label><input type="date" value={filter.endDate} onChange={e => setFilter({...filter, endDate: e.target.value})} className="w-full border p-2 rounded-lg outline-none shadow-sm focus:border-indigo-400 text-sm" /></div>
-                <div><label className="block text-[10px] font-black text-indigo-900 mb-1 uppercase">Pilih Sesi</label><select value={filter.sesi} onChange={e => setFilter({...filter, sesi: e.target.value})} className="w-full border p-2 rounded-lg outline-none text-sm"><option value="">Semua Sesi</option><option value="Siang">Siang</option><option value="Malam">Malam</option></select></div>
-                <div><label className="block text-[10px] font-black text-indigo-900 mb-1 uppercase">Pilih Lokasi</label><select value={filter.lokasi} onChange={e => setFilter({...filter, lokasi: e.target.value})} className="w-full border p-2 rounded-lg outline-none text-sm"><option value="">Semua Lokasi</option>{lokasiList.map((l, i) => <option key={i} value={l}>{l}</option>)}</select></div>
-                <div><label className="block text-[10px] font-black text-indigo-900 mb-1 uppercase">Cari Petugas</label><select value={filter.petugas} onChange={e => setFilter({...filter, petugas: e.target.value})} className="w-full border p-2 rounded-lg outline-none text-sm"><option value="">Semua Petugas</option>{petugasList.map((p, i) => <option key={i} value={p}>{p}</option>)}</select></div>
-              </div>
-
-              {/* 2. DETAIL TRANSAKSI BERDASARKAN FILTER (SEPERTI MONITOR INPUT) */}
-              <div className="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm mb-8 flex flex-col min-h-[300px]">
-                <div className="bg-gray-50 px-4 py-3 border-b flex justify-between items-center">
-                  <span className="font-black text-indigo-900 uppercase text-xs tracking-widest italic">Detail Transaksi Terpilih</span>
-                  <span className="text-[10px] text-gray-400 font-bold">{filteredAndSortedRecords.length} Record Ditemukan</span>
-                </div>
-                <div className="flex-1 overflow-auto custom-scrollbar">
-                  <table className="min-w-full text-[11px] md:text-xs text-left"><thead className="bg-gray-50 text-gray-800 sticky top-0 border-b font-black uppercase tracking-tighter"><tr>
-                    <th className="p-3 cursor-pointer hover:bg-gray-100" onClick={() => requestSort('tanggal')}>Tgl {sortConfig.key === 'tanggal' && (sortConfig.direction === 'asc' ? '↑' : '↓')}</th>
-                    <th className="p-3 cursor-pointer hover:bg-gray-100" onClick={() => requestSort('sesi')}>Sesi {sortConfig.key === 'sesi' && (sortConfig.direction === 'asc' ? '↑' : '↓')}</th>
-                    <th className="p-3 cursor-pointer hover:bg-gray-100" onClick={() => requestSort('nama')}>Petugas {sortConfig.key === 'nama' && (sortConfig.direction === 'asc' ? '↑' : '↓')}</th>
-                    <th className="p-3">Lokasi</th><th className="p-3 text-right">Top Up (Rp)</th><th className="p-3 text-center border-l bg-blue-50">T.20</th><th className="p-3 text-center bg-blue-50">T.50</th><th className="p-3 text-center border-l bg-orange-50">NT.20</th><th className="p-3 text-center bg-orange-50">NT.50</th><th className="p-3 text-right font-black cursor-pointer bg-indigo-50" onClick={() => requestSort('total')}>Grand Total {sortConfig.key === 'total' && (sortConfig.direction === 'asc' ? '↑' : '↓')}</th>
-                    <th className="p-3 text-center">Ket</th><th className="p-3 text-center">Aksi</th>
-                  </tr></thead>
-                  <tbody className="divide-y bg-white">{filteredAndSortedRecords.map(r => (
-                    <tr key={r.id} className="hover:bg-indigo-50 transition-colors"><td className="p-3 font-medium text-gray-500">{r.tanggal}<span className="block text-[9px]">{r.jam_input}</span></td><td className="p-3 font-black text-blue-700 uppercase italic">{r.sesi}</td><td className="p-3 font-bold text-gray-900">{r.nama}</td><td className="p-3 text-gray-600">{r.lokasi}</td><td className="p-3 text-right font-bold text-green-700">{formatRp(r.topup)}</td><td className="p-3 text-center border-l font-bold text-blue-600">{r.tk20 || 0}</td><td className="p-3 text-center font-bold text-blue-600">{r.tk50 || 0}</td><td className="p-3 text-center border-l font-bold text-orange-600">{r.ntk20 || 0}</td><td className="p-3 text-center font-bold text-orange-600">{r.ntk50 || 0}</td><td className="p-3 text-right font-black text-indigo-900">{formatRp(getRowTotal(r))}</td><td className="p-3 italic text-gray-400 truncate max-w-[100px]">{r.ket || '-'}</td><td className="p-3 text-center"><div className="flex gap-2 justify-center"><button onClick={() => { setActiveTab('input'); handleEdit(r); }} className="text-blue-600 font-bold hover:underline">Edit</button><button onClick={() => hapusData(r.id)} className="text-red-500 font-bold hover:underline">Del</button></div></td></tr>
-                  ))}
-                  {filteredAndSortedRecords.length === 0 && <tr><td colSpan="12" className="p-16 text-center text-gray-300 font-black italic text-sm">Tidak ada data transaksi untuk filter ini.</td></tr>}
-                  </tbody></table>
-                </div>
-                {filteredAndSortedRecords.length > 0 && (
-                  <div className="bg-indigo-900 text-white p-3 flex justify-between items-center text-xs font-black uppercase tracking-widest">
-                    <span>Subtotal Terfilter :</span>
-                    <div className="flex gap-6">
-                      <span>Topup: Rp {formatRp(currentSums.topup)}</span>
-                      <span className="text-indigo-200">Kartu: {currentSums.tk20 + currentSums.ntk20 + currentSums.tk50 + currentSums.ntk50} Pcs</span>
-                      <span className="text-yellow-400">Total: Rp {formatRp(currentSums.total)}</span>
-                    </div>
+              {/* FILTERING AREA */}
+              <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-4">
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-500 mb-1.5 uppercase tracking-wider">Mulai Tanggal</label>
+                    <input type="date" value={filter.startDate} max={getTodayStr()} onChange={e => setFilter({...filter, startDate: e.target.value})} className="w-full border border-slate-300 rounded-xl p-2.5 outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 text-sm font-semibold text-slate-800 transition-all" />
                   </div>
-                )}
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-500 mb-1.5 uppercase tracking-wider">Hingga Tanggal</label>
+                    <input type="date" value={filter.endDate} max={getTodayStr()} onChange={e => setFilter({...filter, endDate: e.target.value})} className="w-full border border-slate-300 rounded-xl p-2.5 outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 text-sm font-semibold text-slate-800 transition-all" />
+                  </div>
+                  
+                  <div className={(reportType === 'ecar' || reportType === 'foto') ? 'hidden' : 'block'}>
+                    <label className="block text-[11px] font-bold text-slate-500 mb-1.5 uppercase tracking-wider">Sesi</label>
+                    <select value={filter.sesi} onChange={e => setFilter({...filter, sesi: e.target.value})} className="w-full border border-slate-300 rounded-xl p-2.5 outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 text-sm font-medium text-slate-700 transition-all"><option value="">Semua Sesi</option><option value="Siang">Siang</option><option value="Malam">Malam</option></select>
+                  </div>
+                  <div className={(reportType === 'ecar' || reportType === 'foto') ? 'hidden' : 'block'}>
+                    <label className="block text-[11px] font-bold text-slate-500 mb-1.5 uppercase tracking-wider">Lokasi</label>
+                    <select value={filter.lokasi} onChange={e => setFilter({...filter, lokasi: e.target.value})} className="w-full border border-slate-300 rounded-xl p-2.5 outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 text-sm font-medium text-slate-700 transition-all"><option value="">Semua Lokasi</option>{lokasiList.map((l, i) => <option key={i} value={l}>{l}</option>)}</select>
+                  </div>
+                  <div className={(reportType === 'ecar' || reportType === 'foto') ? 'hidden' : 'block'}>
+                    <label className="block text-[11px] font-bold text-slate-500 mb-1.5 uppercase tracking-wider">Petugas</label>
+                    <select value={filter.petugas} onChange={e => setFilter({...filter, petugas: e.target.value})} className="w-full border border-slate-300 rounded-xl p-2.5 outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 text-sm font-medium text-slate-700 transition-all"><option value="">Semua Petugas</option>{petugasList.map((p, i) => <option key={i} value={p}>{p}</option>)}</select>
+                  </div>
+                </div>
               </div>
 
-              {/* 3. REKAPAN KESELURUHAN (KESIMPULAN ANGKA) */}
-              <div className="bg-purple-50 rounded-xl border-2 border-purple-200 p-6 shadow-sm">
-                <div className="flex justify-between items-center mb-6 border-b-2 border-purple-200 pb-3">
-                  <h3 className="text-xl font-black text-purple-900 uppercase tracking-tighter italic underline decoration-purple-400 decoration-4 underline-offset-4">Rekapitulasi Angka Strategis</h3>
-                  <div className="bg-purple-200 text-purple-900 px-5 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest shadow-inner">Periode Seleksi</div>
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-                  <div className="bg-white p-6 rounded-3xl shadow-md border-l-[12px] border-purple-600 hover:scale-[1.02] transition-transform">
-                    <h4 className="font-black text-purple-800 text-[10px] uppercase mb-5 tracking-[0.2em] border-b pb-2">Jakcard Sales</h4>
-                    <div className="space-y-4">
-                      <div className="flex justify-between items-center bg-purple-50 p-3 rounded-2xl border border-purple-100">
-                         <span className="text-xs font-black text-purple-800">K.20</span>
-                         <span className="font-black text-purple-900 text-lg">{(currentSums.tk20 || 0) + (currentSums.ntk20 || 0)} <span className="text-[10px] text-purple-400">Pcs</span></span>
-                      </div>
-                      <div className="flex justify-between items-center bg-purple-50 p-3 rounded-2xl border border-purple-100">
-                         <span className="text-xs font-black text-purple-800">K.50</span>
-                         <span className="font-black text-purple-900 text-lg">{(currentSums.tk50 || 0) + (currentSums.ntk50 || 0)} <span className="text-[10px] text-purple-400">Pcs</span></span>
-                      </div>
-                      <div className="pt-4 border-t-4 border-double border-purple-100 flex flex-col items-end">
-                         <span className="text-[9px] font-black uppercase text-gray-400 mb-1">Total Nilai Jakcard</span>
-                         <span className="font-black text-2xl text-purple-700 tracking-tighter">Rp {formatRp(((currentSums.tk20 + currentSums.ntk20)*45000) + ((currentSums.tk50 + currentSums.ntk50)*75000))}</span>
-                      </div>
+              {/* ========================================= */}
+              {/* SUB-VIEW 1: LAPORAN GENERAL */}
+              {/* ========================================= */}
+              {reportType === 'umum' && (
+                <>
+                  <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden flex flex-col min-h-[300px]">
+                    <div className="bg-slate-50 px-5 py-4 border-b border-slate-200 flex justify-between items-center"><span className="font-bold text-slate-800 text-sm">Tabel Detail Transaksi Jakcard</span><span className="bg-slate-200 text-slate-700 font-bold text-[10px] px-2 py-1 rounded-md">{filteredAndSortedRecords.length} Record</span></div>
+                    <div className="flex-1 overflow-auto custom-scrollbar">
+                      <table className="min-w-full text-xs text-left"><thead className="bg-slate-50 text-slate-600 sticky top-0 border-b border-slate-200 font-bold uppercase tracking-wider text-[10px]"><tr>
+                        <th className="p-4 cursor-pointer hover:bg-slate-100 transition-colors" onClick={() => requestSort('tanggal')}>Tgl {sortConfig.key === 'tanggal' && (sortConfig.direction === 'asc' ? '↑' : '↓')}</th>
+                        <th className="p-4 cursor-pointer hover:bg-slate-100 transition-colors" onClick={() => requestSort('sesi')}>Sesi</th>
+                        <th className="p-4 cursor-pointer hover:bg-slate-100 transition-colors" onClick={() => requestSort('nama')}>Petugas</th>
+                        <th className="p-4">Lokasi</th><th className="p-4 text-right">Top Up (Rp)</th><th className="p-4 text-center border-l border-slate-200 bg-slate-50/50">T.20</th><th className="p-4 text-center bg-slate-50/50">T.50</th><th className="p-4 text-center border-l border-slate-200 bg-slate-50/50">NT.20</th><th className="p-4 text-center bg-slate-50/50">NT.50</th><th className="p-4 text-right cursor-pointer" onClick={() => requestSort('total')}>Grand Total</th>
+                      </tr></thead>
+                      <tbody className="divide-y divide-slate-100 bg-white">{filteredAndSortedRecords.map(r => (
+                        <tr key={r.id} className="hover:bg-slate-50 transition-colors"><td className="p-4 font-semibold text-slate-700 whitespace-nowrap">{formatTanggalStandard(r.tanggal)}<span className="block text-[10px] text-slate-400 font-normal">{r.jam_input} WIB</span></td><td className="p-4 font-bold text-emerald-600 text-[10px] uppercase">{r.sesi}</td><td className="p-4 font-semibold text-slate-800">{r.nama}</td><td className="p-4 text-slate-600 font-medium">{r.lokasi}</td><td className="p-4 text-right font-bold text-emerald-600">{formatRp(r.topup)}</td><td className="p-4 text-center border-l border-slate-100 font-semibold text-blue-600">{r.tk20 || 0}</td><td className="p-4 text-center font-semibold text-blue-600">{r.tk50 || 0}</td><td className="p-4 text-center border-l border-slate-100 font-semibold text-orange-600">{r.ntk20 || 0}</td><td className="p-4 text-center font-semibold text-orange-600">{r.ntk50 || 0}</td><td className="p-4 text-right font-black text-slate-800">{formatRp(getRowTotal(r))}</td></tr>
+                      ))}
+                      {filteredAndSortedRecords.length === 0 && <tr><td colSpan="10" className="p-16 text-center text-slate-400 font-medium italic">Tidak ada data transaksi yang sesuai dengan filter.</td></tr>}
+                      </tbody></table>
                     </div>
                   </div>
                   
-                  <div className="bg-white p-6 rounded-3xl shadow-md border-l-[12px] border-blue-600 hover:scale-[1.02] transition-transform">
-                    <h4 className="font-black text-blue-800 text-[10px] uppercase mb-5 tracking-[0.2em] border-b pb-2">Electric Car</h4>
-                    <div className="flex flex-col items-center justify-center h-24 bg-blue-50 rounded-2xl mb-4 border border-blue-100 shadow-inner">
-                       <span className="text-[10px] font-black text-blue-400 uppercase mb-1">Volumetrik TRX</span>
-                       <span className="font-black text-blue-700 text-5xl tracking-tighter italic">{extraData.ecarTrx || 0}</span>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+                      <h4 className="font-bold text-slate-500 text-[10px] uppercase tracking-widest mb-4">Total Penjualan Jakcard</h4>
+                      <div className="flex justify-between font-medium text-slate-700 mb-2 text-sm"><span>Kartu 20K</span><span className="font-bold">{(currentSums.tk20||0)+(currentSums.ntk20||0)} Pcs</span></div>
+                      <div className="flex justify-between font-medium text-slate-700 mb-4 text-sm"><span>Kartu 50K</span><span className="font-bold">{(currentSums.tk50||0)+(currentSums.ntk50||0)} Pcs</span></div>
+                      <div className="flex justify-between font-black text-2xl text-slate-800 border-t border-slate-100 pt-4"><span><span className="text-sm text-slate-400 font-bold mr-1">Rp</span></span><span>{formatRp(((currentSums.tk20+currentSums.ntk20)*45000)+((currentSums.tk50+currentSums.ntk50)*75000))}</span></div>
                     </div>
-                    <div className="pt-4 border-t-4 border-double border-blue-100 flex flex-col items-end">
-                       <span className="text-[9px] font-black uppercase text-gray-400 mb-1">Gross Revenue</span>
-                       <span className="font-black text-2xl text-blue-800 tracking-tighter">Rp {formatRp(extraData.ecarRaw)}</span>
+                    <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+                      <h4 className="font-bold text-slate-500 text-[10px] uppercase tracking-widest mb-4">Total Pendapatan E-Car</h4>
+                      <div className="flex justify-between font-medium text-slate-700 mb-11 text-sm"><span>Volume Transaksi</span><span className="font-bold">{extraSums.ecarTrx} Trx</span></div>
+                      <div className="flex justify-between font-black text-2xl text-slate-800 border-t border-slate-100 pt-4"><span><span className="text-sm text-slate-400 font-bold mr-1">Rp</span></span><span>{formatRp(extraSums.ecarRaw)}</span></div>
+                    </div>
+                    <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+                      <h4 className="font-bold text-slate-500 text-[10px] uppercase tracking-widest mb-4">Total Foto Satwa</h4>
+                      <div className="flex justify-between font-medium text-slate-700 mb-11 text-sm"><span>Volume Transaksi</span><span className="font-bold">{extraSums.fotoTrx} Trx</span></div>
+                      <div className="flex justify-between font-black text-2xl text-slate-800 border-t border-slate-100 pt-4"><span><span className="text-sm text-slate-400 font-bold mr-1">Rp</span></span><span>{formatRp(extraSums.fotoRaw)}</span></div>
+                    </div>
+                  </div>
+                </>
+              )}
+
+              {/* ========================================= */}
+              {/* SUB-VIEW 2: LAPORAN KHUSUS JAKCARD */}
+              {/* ========================================= */}
+              {reportType === 'jakcard' && (
+                <div className="space-y-6">
+                  <div className="bg-gradient-to-r from-emerald-600 to-teal-500 text-white p-8 rounded-3xl shadow-md flex flex-col md:flex-row justify-between items-center">
+                    <div>
+                      <h3 className="text-2xl font-black tracking-tight mb-1">Rekap Jakcard & Topup</h3>
+                      <p className="text-emerald-100 text-xs font-semibold tracking-wider opacity-90">{formatTanggalStandard(filter.startDate)} <span className="mx-1">&mdash;</span> {formatTanggalStandard(filter.endDate)}</p>
+                    </div>
+                    <div className="mt-6 md:mt-0 text-right bg-white/10 px-6 py-4 rounded-2xl backdrop-blur-sm border border-white/20">
+                      <div className="text-emerald-100 text-[10px] font-bold uppercase tracking-widest mb-1">Total Perputaran Rupiah</div>
+                      <div className="text-3xl font-black tracking-tighter">Rp {formatRp(((currentSums.tk20+currentSums.ntk20)*45000)+((currentSums.tk50+currentSums.ntk50)*75000) + currentSums.topup)}</div>
                     </div>
                   </div>
 
-                  <div className="bg-white p-6 rounded-3xl shadow-md border-l-[12px] border-orange-600 hover:scale-[1.02] transition-transform">
-                    <h4 className="font-black text-orange-800 text-[10px] uppercase mb-5 tracking-[0.2em] border-b pb-2">Wildlife Photography</h4>
-                    <div className="flex flex-col items-center justify-center h-24 bg-orange-50 rounded-2xl mb-4 border border-orange-100 shadow-inner">
-                       <span className="text-[10px] font-black text-orange-400 uppercase mb-1">Snapshot Count</span>
-                       <span className="font-black text-orange-700 text-5xl tracking-tighter italic">{extraData.fotoTrx || 0}</span>
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                    <div className="bg-white border border-slate-200 p-6 rounded-2xl shadow-sm text-center flex flex-col justify-center"><div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-2">Total K.20 (Pcs)</div><div className="text-4xl font-black text-slate-700">{(currentSums.tk20||0)+(currentSums.ntk20||0)}</div></div>
+                    <div className="bg-white border border-slate-200 p-6 rounded-2xl shadow-sm text-center flex flex-col justify-center"><div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-2">Total K.50 (Pcs)</div><div className="text-4xl font-black text-slate-700">{(currentSums.tk50||0)+(currentSums.ntk50||0)}</div></div>
+                    <div className="bg-white border border-slate-200 p-6 rounded-2xl shadow-sm text-center flex flex-col justify-center"><div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-2">Total Top Up (Rp)</div><div className="text-2xl font-black text-emerald-600 mt-2">Rp {formatRp(currentSums.topup)}</div></div>
+                    <div className="bg-white border border-slate-200 p-6 rounded-2xl shadow-sm text-center flex flex-col justify-center"><div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-2">Total Record Data</div><div className="text-4xl font-black text-emerald-500">{filteredAndSortedRecords.length}</div></div>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className="bg-white border border-slate-200 p-6 rounded-2xl shadow-sm relative overflow-hidden">
+                      <div className="absolute top-0 left-0 w-1.5 h-full bg-blue-500"></div>
+                      <h4 className="font-bold text-slate-800 text-base mb-6">Rincian Penjualan Tunai</h4>
+                      <div className="space-y-4">
+                        <div className="flex justify-between items-center"><span className="font-medium text-slate-500 text-sm">Kartu 20K</span><span className="font-black text-xl text-slate-800">{currentSums.tk20 || 0} <span className="text-xs text-slate-400 font-semibold ml-1">Pcs</span></span></div>
+                        <div className="w-full h-px bg-slate-100"></div>
+                        <div className="flex justify-between items-center"><span className="font-medium text-slate-500 text-sm">Kartu 50K</span><span className="font-black text-xl text-slate-800">{currentSums.tk50 || 0} <span className="text-xs text-slate-400 font-semibold ml-1">Pcs</span></span></div>
+                      </div>
                     </div>
-                    <div className="pt-4 border-t-4 border-double border-orange-100 flex flex-col items-end">
-                       <span className="text-[9px] font-black uppercase text-gray-400 mb-1">Gross Revenue</span>
-                       <span className="font-black text-2xl text-orange-800 tracking-tighter">Rp {formatRp(extraData.fotoRaw)}</span>
+                    <div className="bg-white border border-slate-200 p-6 rounded-2xl shadow-sm relative overflow-hidden">
+                      <div className="absolute top-0 left-0 w-1.5 h-full bg-orange-500"></div>
+                      <h4 className="font-bold text-slate-800 text-base mb-6">Rincian Penjualan Non-Tunai</h4>
+                      <div className="space-y-4">
+                        <div className="flex justify-between items-center"><span className="font-medium text-slate-500 text-sm">Kartu 20K</span><span className="font-black text-xl text-slate-800">{currentSums.ntk20 || 0} <span className="text-xs text-slate-400 font-semibold ml-1">Pcs</span></span></div>
+                        <div className="w-full h-px bg-slate-100"></div>
+                        <div className="flex justify-between items-center"><span className="font-medium text-slate-500 text-sm">Kartu 50K</span><span className="font-black text-xl text-slate-800">{currentSums.ntk50 || 0} <span className="text-xs text-slate-400 font-semibold ml-1">Pcs</span></span></div>
+                      </div>
                     </div>
                   </div>
                 </div>
-              </div>
+              )}
+
+              {/* ========================================= */}
+              {/* SUB-VIEW 3: LAPORAN KHUSUS E-CAR */}
+              {/* ========================================= */}
+              {reportType === 'ecar' && (
+                <div className="space-y-6">
+                  <div className="bg-slate-800 text-white p-8 rounded-3xl shadow-md flex flex-col md:flex-row justify-between items-center">
+                    <div>
+                      <h3 className="text-2xl font-black tracking-tight mb-1 text-blue-400">Rekap E-Car</h3>
+                      <p className="text-slate-400 text-xs font-semibold tracking-wider opacity-90">{formatTanggalStandard(filter.startDate)} <span className="mx-1">&mdash;</span> {formatTanggalStandard(filter.endDate)}</p>
+                    </div>
+                    <div className="mt-6 md:mt-0 flex gap-6">
+                       <div className="bg-white/5 px-6 py-4 rounded-2xl border border-white/10 text-center"><div className="text-slate-400 text-[10px] font-bold uppercase tracking-widest mb-1">Total Transaksi</div><div className="text-2xl font-black text-white">{extraSums.ecarTrx} Trx</div></div>
+                       <div className="bg-blue-500/10 px-6 py-4 rounded-2xl border border-blue-500/20 text-center"><div className="text-blue-300 text-[10px] font-bold uppercase tracking-widest mb-1">Total Pendapatan</div><div className="text-2xl font-black text-white">Rp {formatRp(extraSums.ecarRaw)}</div></div>
+                    </div>
+                  </div>
+
+                  <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+                    <table className="min-w-full text-sm text-left"><thead className="bg-slate-50 text-slate-500 border-b border-slate-200 font-bold uppercase tracking-wider text-[10px]"><tr>
+                      <th className="p-5">Tanggal Operasional</th><th className="p-5 text-center">Volume Transaksi</th><th className="p-5 text-right">Nominal Pendapatan</th>
+                    </tr></thead>
+                    <tbody className="divide-y divide-slate-100">{filteredExtraRecords.map(r => (r.ecarRaw > 0 || r.ecarTrx > 0) && (
+                      <tr key={r.id} className="hover:bg-slate-50 transition-colors"><td className="p-5 font-semibold text-slate-700">{formatTanggalStandard(r.id)}</td><td className="p-5 text-center font-bold text-slate-600">{r.ecarTrx} <span className="text-xs font-normal text-slate-400 ml-1">Trx</span></td><td className="p-5 text-right font-black text-slate-800">Rp {formatRp(r.ecarRaw)}</td></tr>
+                    ))}
+                    {filteredExtraRecords.filter(r => r.ecarRaw > 0 || r.ecarTrx > 0).length === 0 && <tr><td colSpan="3" className="p-16 text-center text-slate-400 font-medium italic">Tidak ada catatan transaksi E-Car pada periode yang dipilih.</td></tr>}
+                    </tbody></table>
+                  </div>
+                </div>
+              )}
+
+              {/* ========================================= */}
+              {/* SUB-VIEW 4: LAPORAN KHUSUS FOTO SATWA */}
+              {/* ========================================= */}
+              {reportType === 'foto' && (
+                <div className="space-y-6">
+                  <div className="bg-slate-800 text-white p-8 rounded-3xl shadow-md flex flex-col md:flex-row justify-between items-center">
+                    <div>
+                      <h3 className="text-2xl font-black tracking-tight mb-1 text-orange-400">Rekap Foto Satwa</h3>
+                      <p className="text-slate-400 text-xs font-semibold tracking-wider opacity-90">{formatTanggalStandard(filter.startDate)} <span className="mx-1">&mdash;</span> {formatTanggalStandard(filter.endDate)}</p>
+                    </div>
+                    <div className="mt-6 md:mt-0 flex gap-6">
+                       <div className="bg-white/5 px-6 py-4 rounded-2xl border border-white/10 text-center"><div className="text-slate-400 text-[10px] font-bold uppercase tracking-widest mb-1">Total Transaksi</div><div className="text-2xl font-black text-white">{extraSums.fotoTrx} Trx</div></div>
+                       <div className="bg-orange-500/10 px-6 py-4 rounded-2xl border border-orange-500/20 text-center"><div className="text-orange-300 text-[10px] font-bold uppercase tracking-widest mb-1">Total Pendapatan</div><div className="text-2xl font-black text-white">Rp {formatRp(extraSums.fotoRaw)}</div></div>
+                    </div>
+                  </div>
+
+                  <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+                    <table className="min-w-full text-sm text-left"><thead className="bg-slate-50 text-slate-500 border-b border-slate-200 font-bold uppercase tracking-wider text-[10px]"><tr>
+                      <th className="p-5">Tanggal Operasional</th><th className="p-5 text-center">Volume Transaksi</th><th className="p-5 text-right">Nominal Pendapatan</th>
+                    </tr></thead>
+                    <tbody className="divide-y divide-slate-100">{filteredExtraRecords.map(r => (r.fotoRaw > 0 || r.fotoTrx > 0) && (
+                      <tr key={r.id} className="hover:bg-slate-50 transition-colors"><td className="p-5 font-semibold text-slate-700">{formatTanggalStandard(r.id)}</td><td className="p-5 text-center font-bold text-slate-600">{r.fotoTrx} <span className="text-xs font-normal text-slate-400 ml-1">Trx</span></td><td className="p-5 text-right font-black text-slate-800">Rp {formatRp(r.fotoRaw)}</td></tr>
+                    ))}
+                    {filteredExtraRecords.filter(r => r.fotoRaw > 0 || r.fotoTrx > 0).length === 0 && <tr><td colSpan="3" className="p-16 text-center text-slate-400 font-medium italic">Tidak ada catatan transaksi Foto Satwa pada periode yang dipilih.</td></tr>}
+                    </tbody></table>
+                  </div>
+                </div>
+              )}
+
             </div>
           )}
 
-          {/* TAB: CETAK TABEL (PENYEMPURNAAN PCS) */}
+          {/* TAB: CETAK TABEL */}
           <div className={activeTab === 'print1' ? 'block print:block max-w-7xl mx-auto' : 'hidden print:hidden'}>
-            <div className="mb-4 print:hidden flex flex-col sm:flex-row justify-between items-center bg-blue-50 p-4 rounded-xl border border-blue-200"><div className="flex items-center gap-3"><span className="text-sm font-bold">Pilih Sesi Cetak:</span><select value={filter.sesi} onChange={e => setFilter({...filter, sesi: e.target.value})} className="border rounded-lg p-2 outline-none font-bold shadow-sm focus:border-blue-400"><option value="">Semua Sesi Digabung</option><option value="Siang">Hanya Sesi Siang</option><option value="Malam">Hanya Sesi Malam</option></select></div><button onClick={() => window.print()} className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-8 rounded-lg shadow-lg transition">Cetak Tabel (PDF)</button></div>
-            <div className="bg-white p-4 md:p-10 w-full min-h-[297mm] shadow-lg print:shadow-none font-sans text-xs sm:text-sm border"><div className="text-center mb-8 border-b-2 border-black pb-4"><h1 className="font-black text-lg md:text-xl uppercase tracking-tighter">REKAP PENERIMAAN SETORAN PENJUALAN KARTU JAKCARD DAN TOPUP</h1><h2 className="font-bold text-md uppercase">UNIT PENGELOLA TAMAN MARGASATWA RAGUNAN</h2></div><div className="flex justify-between mb-4 font-black text-sm uppercase"><div>Hari/Tanggal : {filter.startDate === filter.endDate ? formatTanggalIndonesia(filter.startDate) : (filter.startDate ? `${filter.startDate} s/d ${filter.endDate}` : 'Filter Periode')}</div><div>Sesi : {filter.sesi ? filter.sesi : 'SIANG & MALAM'}</div></div>
-              <table className="w-full border-collapse border-2 border-black mb-6 text-[10px] md:text-[11px]"><thead className="bg-gray-100 text-center font-black uppercase"><tr><th className="border-2 border-black p-2" rowSpan="2">NO</th><th className="border-2 border-black p-2" rowSpan="2">Nama Petugas</th><th className="border-2 border-black p-2" rowSpan="2">Lokasi</th><th className="border-2 border-black p-2" rowSpan="2">TOP UP (Rp)</th><th className="border-2 border-black p-2" colSpan="2">Tunai (Pcs)</th><th className="border-2 border-black p-2" colSpan="2">Non Tunai (Pcs)</th><th className="border-2 border-black p-2" rowSpan="2">Jumlah (Rp)</th><th className="border-2 border-black p-2" rowSpan="2">KET</th></tr><tr><th className="border-2 border-black p-1">K. 20</th><th className="border-2 border-black p-1">K. 50</th><th className="border-2 border-black p-1">K. 20</th><th className="border-2 border-black p-1">K. 50</th></tr></thead>
-              <tbody>{filteredAndSortedRecords.map((r, i) => (<tr key={r.id} className="even:bg-gray-50"><td className="border-2 border-black p-2 text-center">{i + 1}</td><td className="border-2 border-black p-2 font-bold">{r.nama}</td><td className="border-2 border-black p-2">{r.lokasi}</td><td className="border-2 border-black p-2 text-right font-bold">{formatRp(r.topup)}</td><td className="border-2 border-black p-2 text-center">{r.tk20 || 0}</td><td className="border-2 border-black p-2 text-center">{r.tk50 || 0}</td><td className="border-2 border-black p-2 text-center">{r.ntk20 || 0}</td><td className="border-2 border-black p-2 text-center">{r.ntk50 || 0}</td><td className="border-2 border-black p-2 text-right font-black">{formatRp(getRowTotal(r))}</td><td className="border-2 border-black p-2 text-center italic text-gray-500">{r.ket}</td></tr>))}
-              <tr className="bg-gray-200 font-black"><td className="border-2 border-black p-2 text-center" colSpan="3">TOTAL KESELURUHAN</td><td className="border-2 border-black p-2 text-right">{formatRp(currentSums.topup)}</td><td className="border-2 border-black p-2 text-center">{currentSums.tk20}</td><td className="border-2 border-black p-2 text-center">{currentSums.tk50}</td><td className="border-2 border-black p-2 text-center">{currentSums.ntk20}</td><td className="border-2 border-black p-2 text-center">{currentSums.ntk50}</td><td className="border-2 border-black p-2 text-right text-lg underline">{formatRp(currentSums.total)}</td><td className="border-2 border-black"></td></tr></tbody></table>
-              <div className="flex justify-end"><div className="w-72 border-2 border-black p-3 font-black text-xs bg-gray-50 rounded-sm"><div className="flex justify-between border-b border-black pb-2 mb-2"><span>ECAR REVENUE :</span><span>Rp {formatRp(extraData.ecarRaw)}</span></div><div className="flex justify-between italic"><span>PHOTOGRAPHY :</span><span>Rp {formatRp(extraData.fotoRaw)}</span></div></div></div>
+            <div className="mb-6 print:hidden flex flex-col sm:flex-row justify-between items-center bg-white p-5 rounded-2xl border border-slate-200 shadow-sm"><div className="flex items-center gap-4"><span className="text-sm font-bold text-slate-700">Pengaturan Cetak:</span><select value={filter.sesi} onChange={e => setFilter({...filter, sesi: e.target.value})} className="border border-slate-300 rounded-lg p-2 outline-none font-semibold focus:ring-2 focus:ring-emerald-500 text-sm"><option value="">Gabungan Semua Sesi</option><option value="Siang">Sesi Siang</option><option value="Malam">Sesi Malam</option></select></div><button onClick={() => window.print()} className="bg-slate-800 hover:bg-slate-900 text-white font-bold py-2.5 px-8 rounded-xl shadow-md transition-all">Cetak PDF / Print</button></div>
+            <div className="bg-white p-4 md:p-10 w-full min-h-[297mm] shadow-lg print:shadow-none text-xs sm:text-sm border border-slate-200"><div className="text-center mb-8 border-b-2 border-slate-800 pb-4"><h1 className="font-extrabold text-lg md:text-xl uppercase tracking-tight text-slate-900">REKAP PENERIMAAN SETORAN PENJUALAN KARTU JAKCARD DAN TOPUP</h1><h2 className="font-bold text-md uppercase text-slate-700">UNIT PENGELOLA TAMAN MARGASATWA RAGUNAN</h2></div><div className="flex justify-between mb-4 font-bold text-sm uppercase text-slate-800"><div>Hari/Tanggal : {filter.startDate === filter.endDate ? formatTanggalHari(filter.startDate) : (filter.startDate ? `${formatTanggalStandard(filter.startDate)} s/d ${formatTanggalStandard(filter.endDate)}` : 'SEMUA PERIODE')}</div><div>Sesi : {filter.sesi ? filter.sesi : 'SIANG & MALAM'}</div></div>
+              <table className="w-full border-collapse border-2 border-slate-800 mb-6 text-[10px] md:text-[11px]"><thead className="bg-slate-100 text-center font-bold uppercase text-slate-800"><tr><th className="border-2 border-slate-800 p-2" rowSpan="2">NO</th><th className="border-2 border-slate-800 p-2" rowSpan="2">Nama Petugas</th><th className="border-2 border-slate-800 p-2" rowSpan="2">Lokasi</th><th className="border-2 border-slate-800 p-2" rowSpan="2">TOP UP (Rp)</th><th className="border-2 border-slate-800 p-2" colSpan="2">Tunai (Pcs)</th><th className="border-2 border-slate-800 p-2" colSpan="2">Non Tunai (Pcs)</th><th className="border-2 border-slate-800 p-2" rowSpan="2">Jumlah (Rp)</th><th className="border-2 border-slate-800 p-2" rowSpan="2">Keterangan</th></tr><tr><th className="border-2 border-slate-800 p-1">K. 20</th><th className="border-2 border-slate-800 p-1">K. 50</th><th className="border-2 border-slate-800 p-1">K. 20</th><th className="border-2 border-slate-800 p-1">K. 50</th></tr></thead>
+              <tbody className="text-slate-800 font-medium">{filteredAndSortedRecords.map((r, i) => (<tr key={r.id} className="even:bg-slate-50"><td className="border-2 border-slate-800 p-2 text-center">{i + 1}</td><td className="border-2 border-slate-800 p-2 font-semibold">{r.nama}</td><td className="border-2 border-slate-800 p-2">{r.lokasi}</td><td className="border-2 border-slate-800 p-2 text-right font-bold">{formatRp(r.topup)}</td><td className="border-2 border-slate-800 p-2 text-center">{r.tk20 || 0}</td><td className="border-2 border-slate-800 p-2 text-center">{r.tk50 || 0}</td><td className="border-2 border-slate-800 p-2 text-center">{r.ntk20 || 0}</td><td className="border-2 border-slate-800 p-2 text-center">{r.ntk50 || 0}</td><td className="border-2 border-slate-800 p-2 text-right font-bold">{formatRp(getRowTotal(r))}</td><td className="border-2 border-slate-800 p-2 text-center italic text-slate-600">{r.ket}</td></tr>))}
+              <tr className="bg-slate-200 font-bold"><td className="border-2 border-slate-800 p-2 text-center uppercase" colSpan="3">Total Keseluruhan</td><td className="border-2 border-slate-800 p-2 text-right">{formatRp(currentSums.topup)}</td><td className="border-2 border-slate-800 p-2 text-center">{currentSums.tk20}</td><td className="border-2 border-slate-800 p-2 text-center">{currentSums.tk50}</td><td className="border-2 border-slate-800 p-2 text-center">{currentSums.ntk20}</td><td className="border-2 border-slate-800 p-2 text-center">{currentSums.ntk50}</td><td className="border-2 border-slate-800 p-2 text-right text-sm">{formatRp(currentSums.total)}</td><td className="border-2 border-slate-800"></td></tr></tbody></table>
+              <div className="flex justify-end"><div className="w-72 border-2 border-slate-800 p-3 font-bold text-xs bg-slate-50 text-slate-800"><div className="flex justify-between border-b border-slate-400 pb-2 mb-2"><span>PENDAPATAN E-CAR :</span><span>Rp {formatRp(extraSums.ecarRaw)}</span></div><div className="flex justify-between"><span>FOTO SATWA :</span><span>Rp {formatRp(extraSums.fotoRaw)}</span></div></div></div>
             </div>
           </div>
 
-          {/* TAB: CETAK REKAP (PCS UPDATED) */}
+          {/* TAB: CETAK REKAP */}
           <div className={activeTab === 'print2' ? 'block print:block' : 'hidden print:hidden'}>
-            <div className="mb-4 print:hidden flex justify-between items-center bg-blue-50 p-4 rounded-xl border border-blue-200 max-w-[210mm] mx-auto"><div className="flex items-center gap-3"><span className="text-sm font-bold">Pilih Sesi Cetak:</span><select value={filter.sesi} onChange={e => setFilter({...filter, sesi: e.target.value})} className="border rounded-lg p-2 outline-none font-bold shadow-sm focus:border-blue-400"><option value="">Gabung Semua Sesi</option><option value="Siang">Sesi Siang Sahaja</option><option value="Malam">Sesi Malam Sahaja</option></select></div><button onClick={() => window.print()} className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-8 rounded-lg shadow-lg transition">Cetak Rekapitulasi</button></div>
-            <div className="bg-white max-w-[210mm] min-h-[297mm] mx-auto p-12 shadow-xl border-2 print:shadow-none print:p-4 font-serif text-[14px] leading-relaxed">
-              <div className="text-center mb-8 border-b-4 border-double border-black pb-4"><h1 className="text-2xl font-black uppercase tracking-tighter">TAMAN MARGASATWA RAGUNAN</h1><p className="text-lg uppercase tracking-widest italic font-bold">JAKARTA - INDONESIA</p></div>
-              <div className="bg-gray-100 border-2 border-black py-3 mb-6 text-center font-black uppercase tracking-[0.3em]"><h2 className="text-[16px]">REKAP PENJUALAN KARTU JAKCARD DAN TOP UP</h2></div>
-              <div className="flex justify-between font-black mb-8 border-b border-dashed border-black pb-2"><div>HARI/TANGGAL : {filter.startDate === filter.endDate ? formatTanggalIndonesia(filter.startDate) : (filter.startDate ? `${filter.startDate} s/d ${filter.endDate}` : 'SEMUA PERIODE')}</div><div className="uppercase">OPERASIONAL : {filter.sesi ? filter.sesi : 'FULL SESSION'}</div></div>
-              <div className="border-2 border-black pb-10 bg-white">
-                {/* KARTU */}
-                <div className="flex px-6 pt-8"><div className="w-40 font-black italic underline">PENJUALAN KARTU</div><div className="flex-1"><div className="flex mb-3"><div className="w-20 font-black text-center">K. 20</div><div className="w-8 text-center">=</div><div className="w-16 text-center font-black">{(currentSums.tk20 || 0) + (currentSums.ntk20 || 0)}</div><div className="w-12 text-center text-xs">Pcs</div><div className="w-12 text-center text-xs">X</div><div className="w-8 italic">Rp.</div><div className="w-24 text-right font-bold">25.000</div><div className="w-8 text-center">=</div><div className="w-8 italic">Rp.</div><div className="w-28 text-right font-black">{formatRp(reportData.kartu20Rp)}</div></div><div className="flex mb-2"><div className="w-20 font-black text-center">K. 50</div><div className="w-8 text-center">=</div><div className="w-16 text-center font-black">{(currentSums.tk50 || 0) + (currentSums.ntk50 || 0)}</div><div className="w-12 text-center text-xs">Pcs</div><div className="w-12 text-center text-xs">X</div><div className="w-8 italic">Rp.</div><div className="w-24 text-right font-bold">25.000</div><div className="w-8 text-center">=</div><div className="w-8 italic border-b-2 border-black pb-1">Rp.</div><div className="w-28 text-right font-black border-b-2 border-black pb-1">{formatRp(reportData.kartu50Rp)}</div><div className="w-10 text-center font-black">(+)</div></div><div className="flex mb-8 font-black"><div className="w-72"></div><div className="w-32 text-right pr-4 italic">TOTAL KARTU :</div><div className="w-8 italic">Rp.</div><div className="w-28 text-right underline underline-offset-4">{formatRp(totalKartu)}</div></div></div></div>
-                {/* SALDO */}
-                <div className="flex px-6"><div className="w-40 font-black italic underline">ISI SALDO</div><div className="flex-1"><div className="flex mb-3"><div className="w-20 font-black text-center">S. 20</div><div className="w-8 text-center">=</div><div className="w-16 text-center font-black">{(currentSums.tk20 || 0) + (currentSums.ntk20 || 0)}</div><div className="w-12 text-center text-xs">Pcs</div><div className="w-12 text-center text-xs">X</div><div className="w-8 italic">Rp.</div><div className="w-24 text-right font-bold">20.000</div><div className="w-8 text-center">=</div><div className="w-8 italic">Rp.</div><div className="w-28 text-right font-black">{formatRp(reportData.saldo20Rp)}</div></div><div className="flex mb-2"><div className="w-20 font-black text-center">S. 50</div><div className="w-8 text-center">=</div><div className="w-16 text-center font-black">{(currentSums.tk50 || 0) + (currentSums.ntk50 || 0)}</div><div className="w-12 text-center text-xs">Pcs</div><div className="w-12 text-center text-xs">X</div><div className="w-8 italic">Rp.</div><div className="w-24 text-right font-bold">50.000</div><div className="w-8 text-center">=</div><div className="w-8 italic border-b-2 border-black pb-1">Rp.</div><div className="w-28 text-right font-black border-b-2 border-black pb-1">{formatRp(reportData.saldo50Rp)}</div><div className="w-10 text-center font-black">(+)</div></div><div className="flex mb-10 font-black"><div className="w-72"></div><div className="w-32 text-right pr-4 italic">TOTAL SALDO :</div><div className="w-8 italic">Rp.</div><div className="w-28 text-right underline underline-offset-4">{formatRp(totalSaldo)}</div></div></div></div>
-                {/* TOTAL */}
-                <div className="flex px-6 mb-10 border-t-2 border-gray-100 pt-6"><div className="w-[60%] font-black"><div className="flex mb-3 items-center"><div className="w-48 italic">SUBTOTAL JAKCARD</div><div className="w-8 text-center">:</div><div className="w-8 italic">Rp.</div><div className="w-32 text-right">{formatRp(totalPenjualanJakcard)}</div></div><div className="flex mb-2 items-center"><div className="w-48 italic text-green-700">SUBTOTAL TOP UP</div><div className="w-8 text-center">:</div><div className="w-8 italic border-b-2 border-black pb-1">Rp.</div><div className="w-32 text-right border-b-2 border-black pb-1 font-bold text-green-700">{formatRp(currentSums.topup)}</div><div className="w-10 text-center font-black text-xs">(+)</div></div><div className="flex mt-4 items-center bg-gray-50 p-2 border border-black rounded-sm"><div className="w-48 text-right pr-6 text-lg tracking-tighter">GRAND TOTAL SETORAN</div><div className="w-8 text-center text-lg">:</div><div className="w-8 text-xl font-bold">Rp.</div><div className="w-32 text-right text-xl font-black underline decoration-2">{formatRp(grandTotal)}</div></div></div><div className="w-[40%] pl-8 font-black text-[12px]"><div className="mb-4 bg-orange-600 text-white px-2 py-0.5 inline-block rounded-sm">MEMO: NON TUNAI (PCS)</div><div className="flex mb-2 font-bold"><div className="w-36">K. SALDO 20 NT</div><div className="w-6 text-center">:</div><div className="w-16 text-right pr-2 text-orange-600">{currentSums.ntk20}</div><div className="w-10 text-[10px] text-gray-400">Pcs</div></div><div className="flex font-bold"><div className="w-36">K. SALDO 50 NT</div><div className="w-6 text-center">:</div><div className="w-16 text-right pr-2 text-orange-600">{currentSums.ntk50}</div><div className="w-10 text-[10px] text-gray-400">Pcs</div></div></div></div>
-                {/* EXTRA REVENUE */}
-                <div className="px-6 font-black pb-6"><div className="bg-purple-100 px-3 py-1 inline-block mb-4 border border-purple-300 text-purple-900 uppercase text-[10px] italic">Pendapatan Tambahan Harian</div><div className="flex mb-3 items-center"><div className="w-48 italic">E-CAR REVENUE</div><div className="w-8 text-center">:</div><div className="w-8 italic">Rp.</div><div className="w-32 text-right mr-6 font-bold">{formatRp(extraData.ecarRaw)}</div><div className="w-10 text-center text-purple-600 text-xs">{extraData.ecarTrx || 0}</div><div className="w-10 text-[9px] text-gray-400 font-bold uppercase">Trx</div></div><div className="flex items-center"><div className="w-48 italic">WILDLIFE PHOTO</div><div className="w-8 text-center">:</div><div className="w-8 italic">Rp.</div><div className="w-32 text-right mr-6 font-bold">{formatRp(extraData.fotoRaw)}</div><div className="w-10 text-center text-purple-600 text-xs">{extraData.fotoTrx || 0}</div><div className="w-10 text-[9px] text-gray-400 font-bold uppercase">Trx</div></div></div>
+            <div className="mb-6 print:hidden flex justify-between items-center bg-white p-5 rounded-2xl border border-slate-200 max-w-[210mm] mx-auto shadow-sm">
+              <div className="flex items-center gap-4">
+                <span className="text-sm font-bold text-slate-700">Pengaturan Cetak:</span>
+                <select value={filter.sesi} onChange={e => setFilter({...filter, sesi: e.target.value})} className="border border-slate-300 rounded-lg p-2 outline-none font-semibold focus:ring-2 focus:ring-emerald-500 text-sm">
+                  <option value="">Gabungan Semua Sesi</option>
+                  <option value="Siang">Sesi Siang</option>
+                  <option value="Malam">Sesi Malam</option>
+                </select>
               </div>
-              <div className="border-2 border-t-0 border-black px-12 py-8 flex justify-between font-black text-center h-52 bg-white"><div className="flex flex-col justify-between w-64 border border-dashed border-gray-100 p-2 rounded-sm"><div>BENDAHARA PENERIMA</div><div className="border-b-2 border-black pb-1 mb-2 font-black italic">{penandatangan.bendahara || '......................................'}</div></div><div className="flex flex-col justify-between w-64 border border-dashed border-gray-100 p-2 rounded-sm"><div>PEMERIKSA SETORAN</div><div className="border-b-2 border-black pb-1 mb-2 font-black italic">{penandatangan.pemeriksa || '......................................'}</div></div></div>
-              <div className="mt-4 text-[9px] text-gray-400 font-bold italic text-right">Dicetak otomatis oleh Sistem Cloud TMR Jakcard & Topup pada: {new Date().toLocaleString('id-ID')}</div>
+              <button onClick={() => window.print()} className="bg-slate-800 hover:bg-slate-900 text-white font-bold py-2.5 px-8 rounded-xl shadow-md transition-all">Cetak Rekapitulasi</button>
+            </div>
+
+            <div className="bg-white max-w-[210mm] min-h-[297mm] mx-auto p-12 shadow-xl border border-slate-200 print:shadow-none print:border-none print:p-0 text-[14px] text-slate-900">
+              <div className="text-center mb-6 border-b-2 border-slate-800 pb-4"><h1 className="text-xl font-extrabold uppercase tracking-widest text-slate-900">Taman Margasatwa Ragunan</h1><p className="text-base uppercase tracking-[0.2em] font-semibold text-slate-700">Jakarta - Indonesia</p></div>
+              <div className="border-2 border-slate-800 py-2 mb-6 text-center font-bold uppercase bg-slate-100"><h2 className="text-[16px] tracking-widest text-slate-800">Rekap Penjualan Kartu Jakcard dan Top Up</h2></div>
+              <div className="flex justify-between font-bold mb-4 pb-2 text-[13px] text-slate-800"><div>HARI/TANGGAL : {filter.startDate === filter.endDate ? formatTanggalHari(filter.startDate) : (filter.startDate ? `${formatTanggalStandard(filter.startDate)} s/d ${formatTanggalStandard(filter.endDate)}` : 'SEMUA PERIODE')}</div><div className="uppercase">OPERASIONAL : {filter.sesi ? filter.sesi : 'FULL SESSION'}</div></div>
+              
+              <div className="border-2 border-slate-800">
+                <div className="flex p-5"><div className="w-[30%] font-bold uppercase text-slate-600 tracking-wider text-xs pt-1">Penjualan Kartu</div><div className="w-[70%] text-slate-800"><div className="flex mb-2 font-semibold"><div className="w-16">K. 20</div><div className="w-4">=</div><div className="w-12 text-center">{(currentSums.tk20 || 0) + (currentSums.ntk20 || 0)}</div><div className="w-10 text-xs text-center mt-0.5 text-slate-500">Pcs</div><div className="w-6 text-center text-slate-400">x</div><div className="w-8">Rp.</div><div className="w-20 text-right">25.000</div><div className="w-6 text-center text-slate-400">=</div><div className="w-8 text-slate-500">Rp.</div><div className="w-24 text-right">{formatRp(reportData.kartu20Rp)}</div><div className="w-8"></div></div><div className="flex mb-2 font-semibold"><div className="w-16">K. 50</div><div className="w-4">=</div><div className="w-12 text-center">{(currentSums.tk50 || 0) + (currentSums.ntk50 || 0)}</div><div className="w-10 text-xs text-center mt-0.5 text-slate-500">Pcs</div><div className="w-6 text-center text-slate-400">x</div><div className="w-8">Rp.</div><div className="w-20 text-right">25.000</div><div className="w-6 text-center text-slate-400">=</div><div className="w-8 border-b border-slate-800 pb-1 text-slate-500">Rp.</div><div className="w-24 text-right border-b border-slate-800 pb-1">{formatRp(reportData.kartu50Rp)}</div><div className="w-8 text-center font-bold mt-1 text-slate-500">(+)</div></div><div className="flex mt-3 font-bold"><div className="flex-1 text-right pr-6 uppercase text-slate-600 text-xs tracking-wider pt-1">Total Kartu :</div><div className="w-8 text-slate-600">Rp.</div><div className="w-24 text-right text-base">{formatRp(totalKartu)}</div><div className="w-8"></div></div></div></div>
+                <div className="border-t border-dashed border-slate-300 mx-5"></div>
+                <div className="flex p-5"><div className="w-[30%] font-bold uppercase text-slate-600 tracking-wider text-xs pt-1">Isi Saldo</div><div className="w-[70%] text-slate-800"><div className="flex mb-2 font-semibold"><div className="w-16">S. 20</div><div className="w-4">=</div><div className="w-12 text-center">{(currentSums.tk20 || 0) + (currentSums.ntk20 || 0)}</div><div className="w-10 text-xs text-center mt-0.5 text-slate-500">Pcs</div><div className="w-6 text-center text-slate-400">x</div><div className="w-8">Rp.</div><div className="w-20 text-right">20.000</div><div className="w-6 text-center text-slate-400">=</div><div className="w-8 text-slate-500">Rp.</div><div className="w-24 text-right">{formatRp(reportData.saldo20Rp)}</div><div className="w-8"></div></div><div className="flex mb-2 font-semibold"><div className="w-16">S. 50</div><div className="w-4">=</div><div className="w-12 text-center">{(currentSums.tk50 || 0) + (currentSums.ntk50 || 0)}</div><div className="w-10 text-xs text-center mt-0.5 text-slate-500">Pcs</div><div className="w-6 text-center text-slate-400">x</div><div className="w-8">Rp.</div><div className="w-20 text-right">50.000</div><div className="w-6 text-center text-slate-400">=</div><div className="w-8 border-b border-slate-800 pb-1 text-slate-500">Rp.</div><div className="w-24 text-right border-b border-slate-800 pb-1">{formatRp(reportData.saldo50Rp)}</div><div className="w-8 text-center font-bold mt-1 text-slate-500">(+)</div></div><div className="flex mt-3 font-bold"><div className="flex-1 text-right pr-6 uppercase text-slate-600 text-xs tracking-wider pt-1">Total Saldo :</div><div className="w-8 text-slate-600">Rp.</div><div className="w-24 text-right text-base">{formatRp(totalSaldo)}</div><div className="w-8"></div></div></div></div>
+                
+                <div className="border-t-2 border-slate-800 flex text-slate-900 bg-slate-50/50">
+                  <div className="w-[55%] p-6 font-bold border-r-2 border-slate-800 flex flex-col justify-center"><div className="flex justify-between mb-2"><div className="w-40 uppercase text-xs tracking-wider pt-1 text-slate-600">Subtotal Jakcard</div><div className="w-4">:</div><div className="w-8 text-slate-500">Rp.</div><div className="flex-1 text-right text-base">{formatRp(totalPenjualanJakcard)}</div></div><div className="flex justify-between mb-3"><div className="w-40 uppercase text-xs tracking-wider pt-1 text-slate-600">Subtotal Top Up</div><div className="w-4">:</div><div className="w-8 border-b border-slate-800 pb-1 text-slate-500">Rp.</div><div className="flex-1 text-right border-b border-slate-800 pb-1 text-base">{formatRp(currentSums.topup)}</div></div><div className="flex justify-between mt-3 text-lg"><div className="w-40 text-right pr-4 uppercase tracking-widest text-slate-800">Grand Total</div><div className="w-4">:</div><div className="w-8 font-black">Rp.</div><div className="flex-1 text-right font-black">{formatRp(grandTotal)}</div></div></div>
+                  <div className="w-[45%] p-6 text-xs font-semibold flex flex-col justify-center"><div className="font-bold uppercase tracking-wider text-[10px] text-slate-400 mb-3">Memo Transaksi Non-Tunai</div><div className="flex justify-between mb-2 text-slate-700"><div className="w-32">Kartu / Saldo 20 NT</div><div>:</div><div className="flex-1 text-right pr-2 font-bold text-sm">{currentSums.ntk20}</div><div className="text-slate-500">Pcs</div></div><div className="flex justify-between text-slate-700"><div className="w-32">Kartu / Saldo 50 NT</div><div>:</div><div className="flex-1 text-right pr-2 font-bold text-sm">{currentSums.ntk50}</div><div className="text-slate-500">Pcs</div></div></div>
+                </div>
+
+                <div className="border-t-2 border-slate-800 p-6 font-bold text-sm bg-white"><div className="flex mb-3"><div className="w-48 text-slate-600 uppercase tracking-wider text-xs pt-1">Pendapatan E-Car</div><div className="w-4">:</div><div className="w-8 text-slate-500">Rp.</div><div className="w-32 text-right">{formatRp(extraSums.ecarRaw)}</div><div className="ml-4 font-semibold text-slate-400 text-xs pt-0.5">({extraSums.ecarTrx || 0} Trx)</div></div><div className="flex"><div className="w-48 text-slate-600 uppercase tracking-wider text-xs pt-1">Foto Satwa Jinak</div><div className="w-4">:</div><div className="w-8 text-slate-500">Rp.</div><div className="w-32 text-right">{formatRp(extraSums.fotoRaw)}</div><div className="ml-4 font-semibold text-slate-400 text-xs pt-0.5">({extraSums.fotoTrx || 0} Trx)</div></div></div>
+              </div>
+
+              <div className="mt-16 flex justify-between font-bold text-center px-10 text-slate-800"><div className="w-64"><div className="mb-20 uppercase tracking-wider text-xs text-slate-500">Bendahara Penerima</div><div className="border-b border-slate-800 text-base">{penandatangan.bendahara || '......................................'}</div></div><div className="w-64"><div className="mb-20 uppercase tracking-wider text-xs text-slate-500">Pemeriksa Setoran</div><div className="border-b border-slate-800 text-base">{penandatangan.pemeriksa || '......................................'}</div></div></div>
+              <div className="mt-10 text-[10px] text-slate-400 font-medium text-right">Dicetak otomatis oleh Sistem Rekap TMR Cloud pada: {formatTanggalStandard(getTodayStr())}</div>
             </div>
           </div>
 
