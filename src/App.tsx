@@ -137,13 +137,24 @@ export default function App() {
     const unsubMaster = onSnapshot(masterDocRef, (docSnap) => {
       if (docSnap.exists()) {
         const data = docSnap.data();
-        if (data.petugas) setPetugasList(data.petugas);
-        if (data.lokasi) setLokasiList(data.lokasi);
+        if (data.petugas) setPetugasList([...data.petugas].sort((a, b) => a.localeCompare(b)));
+        if (data.lokasi) setLokasiList([...data.lokasi].sort((a, b) => a.localeCompare(b)));
         if (data.penandatangan) setPenandatangan(data.penandatangan);
       } else {
         setDoc(masterDocRef, {
-          petugas: ['Irma Khotimah', 'Arif Nurdiansah', 'Aldi Priadi Ekapaksi'],
-          lokasi: ['TOL UTARA', 'Barat Kendaraan', 'Motor Utara'],
+          petugas: [
+            'Agung Puji Saputra', 'Ahmad Maulana', 'Ahmad Rivaldi', 'Aldi Priadi Ekapaksi', 
+            'Alfatah', 'Amanda Luthfia Ramadhani', 'Amanda Sabila', 'Arif Nurdiansah', 
+            'Eka Priyantiningsih', 'Erfan', 'Ernawati Yuliastiningsih', 'Ervi Irawati', 
+            'Febry', 'Feiruz', 'Fildzah Shabrina', 'Firda Anjanie', 'Herdi Nofiandi', 
+            'Ilham Setiyono', 'Irma Khotimah', 'Laska Nur Shadrina', 'M. Zahwa Dwianka', 
+            'Moh Izwan Ikhsani', 'Nabila Noor Main', 'Ningrum Septianti', 'Novia Istiqomah', 
+            'Nuzul Khaerun Ramadhan', 'Ravi Aditya Fadillah', 'Rendy Renaldhy', 
+            'Ridwan Maulana', 'Rizki Eriansyah', 'Rizmy Hikmat', 'Rosa Anjulina', 
+            'Ryant Sena Perwira', 'Sahara Firyal Humaira', 'Sarifudin', 'Siska Rahmawati', 
+            'Uci Anggraini', 'Widyo Siswantoro', 'Yusuf Syafiih'
+          ].sort((a, b) => a.localeCompare(b)),
+          lokasi: ['Barat Kendaraan', 'Motor Utara', 'TOL UTARA'].sort((a, b) => a.localeCompare(b)),
           penandatangan: { bendahara: 'Evi Irmawati', pemeriksa: 'Hermawati' }
         }).catch(err => console.log("Gagal inisiasi Master DB", err));
       }
@@ -204,8 +215,8 @@ export default function App() {
   const [editPetugasIdx, setEditPetugasIdx] = useState(null);
   const [editPetugasValue, setEditPetugasValue] = useState('');
 
-  const addPetugas = () => { if(newPetugas) { updateMasterDB({ petugas: [...petugasList, newPetugas] }); setNewPetugas(''); }};
-  const addLokasi = () => { if(newLokasi) { updateMasterDB({ lokasi: [...lokasiList, newLokasi] }); setNewLokasi(''); }};
+  const addPetugas = () => { if(newPetugas) { updateMasterDB({ petugas: [...petugasList, newPetugas].sort((a, b) => a.localeCompare(b)) }); setNewPetugas(''); }};
+  const addLokasi = () => { if(newLokasi) { updateMasterDB({ lokasi: [...lokasiList, newLokasi].sort((a, b) => a.localeCompare(b)) }); setNewLokasi(''); }};
   const delPetugas = (idx) => updateMasterDB({ petugas: petugasList.filter((_, i) => i !== idx) });
   const delLokasi = (idx) => updateMasterDB({ lokasi: lokasiList.filter((_, i) => i !== idx) });
 
@@ -448,7 +459,7 @@ export default function App() {
               <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
                 <h3 className="font-bold text-base text-slate-800 mb-4 border-b border-slate-100 pb-3 flex items-center gap-2">
                   <svg className="w-5 h-5 text-emerald-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg>
-                  Pejabat Pengesah
+                  Petugas Penerima
                 </h3>
                 <div className="space-y-4">
                   <div>
