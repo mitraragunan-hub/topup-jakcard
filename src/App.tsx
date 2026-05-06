@@ -108,6 +108,7 @@ export default function App() {
     sesi: '', lokasi: '', petugas: '' 
   });
   const [sortConfig, setSortConfig] = useState({ key: 'tanggal', direction: 'desc' });
+  const [monitorSortDir, setMonitorSortDir] = useState('desc');
 
   const [records, setRecords] = useState([]);
   const [extraRecords, setExtraRecords] = useState([]);
@@ -365,7 +366,17 @@ export default function App() {
   };
 
   const currentSums = calculateSums(filteredAndSortedRecords);
-  const todaySesiRecords = useMemo(() => records.filter(r => r.tanggal === formData.tanggal && r.sesi === getActiveSesi()), [records, formData.tanggal]);
+  const todaySesiRecords = useMemo(() => {
+    let filtered = records.filter(r => r.tanggal === formData.tanggal && r.sesi === getActiveSesi());
+    filtered.sort((a, b) => {
+      const timeA = a.jam_input || '';
+      const timeB = b.jam_input || '';
+      if (timeA < timeB) return monitorSortDir === 'asc' ? -1 : 1;
+      if (timeA > timeB) return monitorSortDir === 'asc' ? 1 : -1;
+      return 0;
+    });
+    return filtered;
+  }, [records, formData.tanggal, monitorSortDir]);
   const livePreviewSums = calculateSums(todaySesiRecords);
 
   const extraSums = useMemo(() => {
@@ -459,7 +470,7 @@ export default function App() {
               <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
                 <h3 className="font-bold text-base text-slate-800 mb-4 border-b border-slate-100 pb-3 flex items-center gap-2">
                   <svg className="w-5 h-5 text-emerald-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg>
-                  Petugas Penerima
+                  Pejabat Pengesah
                 </h3>
                 <div className="space-y-4">
                   <div>
@@ -667,7 +678,7 @@ export default function App() {
                 </div>
               </div>
 
-              {/* SECTION 2: MONITOR TRANSAKSI (Tampilan dipisah K.20 K.50) */}
+              {/* SECTION 2: MONITOR TRANSAKSI (Dengan Kolom Total) */}
               <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
                 <div className="bg-slate-50 p-5 border-b border-slate-200 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                   <div>
@@ -684,12 +695,15 @@ export default function App() {
                 <div className="overflow-x-auto p-0">
                   <table className="min-w-full text-sm text-left"><thead className="bg-slate-50/80 text-slate-600 font-bold uppercase tracking-wider text-[10px] border-b border-slate-200">
                     <tr>
-                      <th className="p-4" rowSpan="2">Waktu</th>
+                      <th className="p-4 cursor-pointer hover:bg-slate-200/50 transition-colors" rowSpan="2" onClick={() => setMonitorSortDir(prev => prev === 'asc' ? 'desc' : 'asc')}>
+                        Waktu {monitorSortDir === 'asc' ? '↑' : '↓'}
+                      </th>
                       <th className="p-4" rowSpan="2">Petugas</th>
                       <th className="p-4" rowSpan="2">Lokasi</th>
                       <th className="p-4 text-right" rowSpan="2">Top Up (Rp)</th>
                       <th className="p-2 text-center border-l border-slate-200" colSpan="2">Tunai (Pcs)</th>
                       <th className="p-2 text-center border-l border-slate-200" colSpan="2">Non-Tunai (Pcs)</th>
+                      <th className="p-4 text-right border-l border-slate-200" rowSpan="2">Total (Rp)</th>
                       <th className="p-4 text-center border-l border-slate-200" rowSpan="2">Aksi</th>
                     </tr>
                     <tr className="border-t border-slate-200">
@@ -714,10 +728,23 @@ export default function App() {
                       <td className="p-4 text-center font-bold text-blue-600 text-xs">{r.tk50 || 0}</td>
                       <td className="p-4 text-center font-bold text-orange-600 text-xs border-l border-slate-100">{r.ntk20 || 0}</td>
                       <td className="p-4 text-center font-bold text-orange-600 text-xs">{r.ntk50 || 0}</td>
+                      <td className="p-4 text-right font-black text-slate-800 border-l border-slate-100">{formatRp(getRowTotal(r))}</td>
                       <td className="p-4 text-center border-l border-slate-100"><div className="flex justify-center gap-3"><button onClick={() => handleEdit(r)} className="text-blue-600 font-semibold hover:text-blue-800 transition-colors text-xs">Edit</button><button onClick={() => hapusData(r.id)} className="text-red-500 font-semibold hover:text-red-700 transition-colors text-xs">Hapus</button></div></td>
                     </tr>
                   ))}
-                  {todaySesiRecords.length === 0 && <tr><td colSpan="9" className="p-12 text-center text-slate-400 font-medium italic">Belum ada input transaksi di tanggal {formatTanggalStandard(formData.tanggal)} untuk Sesi {getActiveSesi()}.</td></tr>}
+                  {todaySesiRecords.length > 0 && (
+                    <tr className="bg-slate-100/80 font-bold border-t-2 border-slate-200">
+                      <td colSpan="3" className="p-4 text-center sm:text-right uppercase text-slate-700 text-xs tracking-wider">Total Keseluruhan</td>
+                      <td className="p-4 text-right text-emerald-600">{formatRp(livePreviewSums.topup)}</td>
+                      <td className="p-4 text-center text-blue-700 border-l border-slate-200">{livePreviewSums.tk20}</td>
+                      <td className="p-4 text-center text-blue-700">{livePreviewSums.tk50}</td>
+                      <td className="p-4 text-center text-orange-700 border-l border-slate-200">{livePreviewSums.ntk20}</td>
+                      <td className="p-4 text-center text-orange-700">{livePreviewSums.ntk50}</td>
+                      <td className="p-4 text-right text-slate-900 border-l border-slate-200">{formatRp(livePreviewSums.total)}</td>
+                      <td className="p-4 border-l border-slate-200"></td>
+                    </tr>
+                  )}
+                  {todaySesiRecords.length === 0 && <tr><td colSpan="10" className="p-12 text-center text-slate-400 font-medium italic">Belum ada input transaksi di tanggal {formatTanggalStandard(formData.tanggal)} untuk Sesi {getActiveSesi()}.</td></tr>}
                   </tbody></table>
                 </div>
               </div>
