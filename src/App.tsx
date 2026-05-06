@@ -96,6 +96,10 @@ export default function App() {
     tk20: '', tk50: '', ntk20: '', ntk50: '', ket: ''
   });
 
+  // Logika jam: Jika di atas jam 20:00 (Malam), selain itu Siang.
+  const getActiveSesi = () => new Date().getHours() >= 20 ? 'Malam' : 'Siang';
+  const activeSesi = getActiveSesi();
+
   // State sementara untuk kalkulator EDC
   const [tempEdc, setTempEdc] = useState('');
 
@@ -178,7 +182,8 @@ export default function App() {
 
   useEffect(() => {
     if (!user || !db) return;
-    const extraInputRef = doc(db, 'artifacts', appId, 'public', 'data', 'daily_extra', formData.tanggal);
+    const docIdExtra = `${formData.tanggal}_${activeSesi}`;
+    const extraInputRef = doc(db, 'artifacts', appId, 'public', 'data', 'daily_extra', docIdExtra);
     const unsubExtraInput = onSnapshot(extraInputRef, (docSnap) => {
       if (docSnap.exists()) {
         const data = docSnap.data();
@@ -193,16 +198,13 @@ export default function App() {
       }
     });
     return () => unsubExtraInput();
-  }, [user, formData.tanggal]);
+  }, [user, formData.tanggal, activeSesi]);
 
   const HARGA_K20 = 45000;
   const HARGA_K50 = 75000;
   const formatRp = (angka) => new Intl.NumberFormat('id-ID').format(angka || 0);
   const getRowTotal = (row) => (row.topup || 0) + ((row.tk20 || 0) * HARGA_K20) + ((row.tk50 || 0) * HARGA_K50);
   
-  // Logika jam: Jika di atas jam 20:00 (Malam), selain itu Siang.
-  const getActiveSesi = () => new Date().getHours() >= 20 ? 'Malam' : 'Siang';
-
   const updateMasterDB = async (payload) => {
     if (!user) return;
     try { await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'master'), payload, { merge: true }); } 
@@ -269,9 +271,13 @@ export default function App() {
       const trxKey = name.replace('Display', 'Trx');
       const trxValue = name === 'ecarDisplay' ? (rawNumber / 250000) : (rawNumber / 5000);
       
+      const docIdExtra = `${formData.tanggal}_${activeSesi}`;
+
       try {
-        await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'daily_extra', formData.tanggal), {
-          [rawKey]: rawNumber, [trxKey]: trxValue
+        await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'daily_extra', docIdExtra), {
+          [rawKey]: rawNumber, [trxKey]: trxValue,
+          tanggal: formData.tanggal,
+          sesi: activeSesi
         }, { merge: true });
       } catch (error) { console.error("Gagal simpan Ecar/Foto:", error); }
     }
@@ -282,7 +288,6 @@ export default function App() {
     if (name === 'topupDisplay') {
       const rawValue = value.replace(/\D/g, '');
       const rawNumber = Number(rawValue);
-      // Jika pengguna mengetik manual di kolom utama, kita asumsikan detail EDC diabaikan / direset agar tidak tabrakan datanya
       const resetDetails = formData.topupDetails.length > 0 ? [] : formData.topupDetails;
       setFormData(prev => ({ ...prev, topupDisplay: rawValue ? formatRp(rawNumber) : '', topupRaw: rawNumber, topupDetails: resetDetails }));
     } else { 
@@ -308,7 +313,7 @@ export default function App() {
       } else {
         const now = new Date();
         payload.jam_input = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
-        payload.sesi = getActiveSesi();
+        payload.sesi = activeSesi;
         await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'records'), payload);
       }
       setFormData(prev => ({ ...prev, nama: '', lokasi: '', topupDisplay: '', topupRaw: 0, topupDetails: [], tk20: '', tk50: '', ntk20: '', ntk50: '', ket: '' }));
@@ -344,11 +349,17 @@ export default function App() {
 
   const filteredExtraRecords = useMemo(() => {
     let result = [...extraRecords];
-    if (filter.startDate) result = result.filter(r => r.id >= filter.startDate);
-    if (filter.endDate) result = result.filter(r => r.id <= filter.endDate);
-    result.sort((a, b) => b.id.localeCompare(a.id)); 
+    if (filter.startDate) result = result.filter(r => (r.tanggal || r.id.split('_')[0]) >= filter.startDate);
+    if (filter.endDate) result = result.filter(r => (r.tanggal || r.id.split('_')[0]) <= filter.endDate);
+    if (filter.sesi) result = result.filter(r => (r.sesi || 'Siang') === filter.sesi);
+    
+    result.sort((a, b) => {
+      const dateA = a.tanggal || a.id.split('_')[0];
+      const dateB = b.tanggal || b.id.split('_')[0];
+      return dateB.localeCompare(dateA); 
+    }); 
     return result;
-  }, [extraRecords, filter.startDate, filter.endDate]);
+  }, [extraRecords, filter.startDate, filter.endDate, filter.sesi]);
 
   const requestSort = (key) => {
     let direction = 'asc';
@@ -366,8 +377,9 @@ export default function App() {
   };
 
   const currentSums = calculateSums(filteredAndSortedRecords);
+  
   const todaySesiRecords = useMemo(() => {
-    let filtered = records.filter(r => r.tanggal === formData.tanggal && r.sesi === getActiveSesi());
+    let filtered = records.filter(r => r.tanggal === formData.tanggal && r.sesi === activeSesi);
     filtered.sort((a, b) => {
       const timeA = a.jam_input || '';
       const timeB = b.jam_input || '';
@@ -376,7 +388,8 @@ export default function App() {
       return 0;
     });
     return filtered;
-  }, [records, formData.tanggal, monitorSortDir]);
+  }, [records, formData.tanggal, activeSesi, monitorSortDir]);
+  
   const livePreviewSums = calculateSums(todaySesiRecords);
 
   const extraSums = useMemo(() => {
@@ -470,7 +483,7 @@ export default function App() {
               <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
                 <h3 className="font-bold text-base text-slate-800 mb-4 border-b border-slate-100 pb-3 flex items-center gap-2">
                   <svg className="w-5 h-5 text-emerald-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg>
-                  Petugas Penandatangan
+                  Pejabat Pengesah
                 </h3>
                 <div className="space-y-4">
                   <div>
@@ -678,11 +691,11 @@ export default function App() {
                 </div>
               </div>
 
-              {/* SECTION 2: MONITOR TRANSAKSI (Dengan Kolom Total) */}
+              {/* SECTION 2: MONITOR TRANSAKSI */}
               <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
                 <div className="bg-slate-50 p-5 border-b border-slate-200 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                   <div>
-                    <h3 className="font-bold text-slate-800 text-base">Monitor Transaksi Sesi {getActiveSesi()}</h3>
+                    <h3 className="font-bold text-slate-800 text-base">Monitor Transaksi Sesi {activeSesi}</h3>
                     <p className="text-xs font-medium text-slate-500 mt-1">
                       Data tercatat untuk tanggal: <span className="font-bold text-emerald-600">{formatTanggalStandard(formData.tanggal)}</span>
                     </p>
@@ -744,7 +757,7 @@ export default function App() {
                       <td className="p-4 border-l border-slate-200"></td>
                     </tr>
                   )}
-                  {todaySesiRecords.length === 0 && <tr><td colSpan="10" className="p-12 text-center text-slate-400 font-medium italic">Belum ada input transaksi di tanggal {formatTanggalStandard(formData.tanggal)} untuk Sesi {getActiveSesi()}.</td></tr>}
+                  {todaySesiRecords.length === 0 && <tr><td colSpan="10" className="p-12 text-center text-slate-400 font-medium italic">Belum ada input transaksi di tanggal {formatTanggalStandard(formData.tanggal)} untuk Sesi {activeSesi}.</td></tr>}
                   </tbody></table>
                 </div>
               </div>
@@ -754,7 +767,7 @@ export default function App() {
                 <div className="bg-indigo-50/50 p-5 border-b border-indigo-100">
                   <h3 className="font-bold text-indigo-900 text-base flex items-center gap-2">
                     <svg className="w-5 h-5 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
-                    Pendapatan Ekstra: <span className="text-indigo-600">{formatTanggalStandard(formData.tanggal)}</span>
+                    Pendapatan Ekstra: <span className="text-indigo-600">{formatTanggalStandard(formData.tanggal)} (Sesi {activeSesi})</span>
                   </h3>
                 </div>
                 <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-8">
@@ -820,7 +833,7 @@ export default function App() {
                     <input type="date" value={filter.endDate} max={getTodayStr()} onChange={e => setFilter({...filter, endDate: e.target.value})} className="w-full border border-slate-300 rounded-xl p-2.5 outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 text-sm font-semibold text-slate-800 transition-all" />
                   </div>
                   
-                  <div className={(reportType === 'ecar' || reportType === 'foto') ? 'hidden' : 'block'}>
+                  <div>
                     <label className="block text-[11px] font-bold text-slate-500 mb-1.5 uppercase tracking-wider">Sesi</label>
                     <select value={filter.sesi} onChange={e => setFilter({...filter, sesi: e.target.value})} className="w-full border border-slate-300 rounded-xl p-2.5 outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 text-sm font-medium text-slate-700 transition-all"><option value="">Semua Sesi</option><option value="Siang">Siang</option><option value="Malam">Malam</option></select>
                   </div>
@@ -942,12 +955,17 @@ export default function App() {
 
                   <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
                     <table className="min-w-full text-sm text-left"><thead className="bg-slate-50 text-slate-500 border-b border-slate-200 font-bold uppercase tracking-wider text-[10px]"><tr>
-                      <th className="p-5">Tanggal Operasional</th><th className="p-5 text-center">Volume Transaksi</th><th className="p-5 text-right">Nominal Pendapatan</th>
+                      <th className="p-5">Tanggal Operasional</th><th className="p-5 text-center">Sesi</th><th className="p-5 text-center">Volume Transaksi</th><th className="p-5 text-right">Nominal Pendapatan</th>
                     </tr></thead>
                     <tbody className="divide-y divide-slate-100">{filteredExtraRecords.map(r => (r.ecarRaw > 0 || r.ecarTrx > 0) && (
-                      <tr key={r.id} className="hover:bg-slate-50 transition-colors"><td className="p-5 font-semibold text-slate-700">{formatTanggalStandard(r.id)}</td><td className="p-5 text-center font-bold text-slate-600">{r.ecarTrx} <span className="text-xs font-normal text-slate-400 ml-1">Trx</span></td><td className="p-5 text-right font-black text-slate-800">Rp {formatRp(r.ecarRaw)}</td></tr>
+                      <tr key={r.id} className="hover:bg-slate-50 transition-colors">
+                        <td className="p-5 font-semibold text-slate-700">{formatTanggalStandard(r.tanggal || r.id.split('_')[0])}</td>
+                        <td className="p-5 text-center font-bold text-emerald-600 text-[10px] uppercase">{r.sesi || 'Siang'}</td>
+                        <td className="p-5 text-center font-bold text-slate-600">{r.ecarTrx} <span className="text-xs font-normal text-slate-400 ml-1">Trx</span></td>
+                        <td className="p-5 text-right font-black text-slate-800">Rp {formatRp(r.ecarRaw)}</td>
+                      </tr>
                     ))}
-                    {filteredExtraRecords.filter(r => r.ecarRaw > 0 || r.ecarTrx > 0).length === 0 && <tr><td colSpan="3" className="p-16 text-center text-slate-400 font-medium italic">Tidak ada catatan transaksi E-Car pada periode yang dipilih.</td></tr>}
+                    {filteredExtraRecords.filter(r => r.ecarRaw > 0 || r.ecarTrx > 0).length === 0 && <tr><td colSpan="4" className="p-16 text-center text-slate-400 font-medium italic">Tidak ada catatan transaksi E-Car pada periode yang dipilih.</td></tr>}
                     </tbody></table>
                   </div>
                 </div>
@@ -971,12 +989,17 @@ export default function App() {
 
                   <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
                     <table className="min-w-full text-sm text-left"><thead className="bg-slate-50 text-slate-500 border-b border-slate-200 font-bold uppercase tracking-wider text-[10px]"><tr>
-                      <th className="p-5">Tanggal Operasional</th><th className="p-5 text-center">Volume Transaksi</th><th className="p-5 text-right">Nominal Pendapatan</th>
+                      <th className="p-5">Tanggal Operasional</th><th className="p-5 text-center">Sesi</th><th className="p-5 text-center">Volume Transaksi</th><th className="p-5 text-right">Nominal Pendapatan</th>
                     </tr></thead>
                     <tbody className="divide-y divide-slate-100">{filteredExtraRecords.map(r => (r.fotoRaw > 0 || r.fotoTrx > 0) && (
-                      <tr key={r.id} className="hover:bg-slate-50 transition-colors"><td className="p-5 font-semibold text-slate-700">{formatTanggalStandard(r.id)}</td><td className="p-5 text-center font-bold text-slate-600">{r.fotoTrx} <span className="text-xs font-normal text-slate-400 ml-1">Trx</span></td><td className="p-5 text-right font-black text-slate-800">Rp {formatRp(r.fotoRaw)}</td></tr>
+                      <tr key={r.id} className="hover:bg-slate-50 transition-colors">
+                        <td className="p-5 font-semibold text-slate-700">{formatTanggalStandard(r.tanggal || r.id.split('_')[0])}</td>
+                        <td className="p-5 text-center font-bold text-emerald-600 text-[10px] uppercase">{r.sesi || 'Siang'}</td>
+                        <td className="p-5 text-center font-bold text-slate-600">{r.fotoTrx} <span className="text-xs font-normal text-slate-400 ml-1">Trx</span></td>
+                        <td className="p-5 text-right font-black text-slate-800">Rp {formatRp(r.fotoRaw)}</td>
+                      </tr>
                     ))}
-                    {filteredExtraRecords.filter(r => r.fotoRaw > 0 || r.fotoTrx > 0).length === 0 && <tr><td colSpan="3" className="p-16 text-center text-slate-400 font-medium italic">Tidak ada catatan transaksi Foto Satwa pada periode yang dipilih.</td></tr>}
+                    {filteredExtraRecords.filter(r => r.fotoRaw > 0 || r.fotoTrx > 0).length === 0 && <tr><td colSpan="4" className="p-16 text-center text-slate-400 font-medium italic">Tidak ada catatan transaksi Foto Satwa pada periode yang dipilih.</td></tr>}
                     </tbody></table>
                   </div>
                 </div>
