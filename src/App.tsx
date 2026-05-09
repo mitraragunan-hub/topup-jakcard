@@ -122,9 +122,9 @@ export default function App() {
     tk20: '', tk50: '', ntk20: '', ntk50: '', ket: ''
   });
 
-  // Logika jam: Jika di atas jam 20:00 (Malam), selain itu Siang.
+  // Logika jam: Jika di atas jam 20:00 (Malam), selain itu Siang. Ini menjadi default awal.
   const getActiveSesi = () => new Date().getHours() >= 20 ? 'Malam' : 'Siang';
-  const activeSesi = getActiveSesi();
+  const [selectedSesi, setSelectedSesi] = useState(getActiveSesi());
 
   // State sementara untuk kalkulator EDC
   const [tempEdc, setTempEdc] = useState('');
@@ -212,7 +212,7 @@ export default function App() {
 
   useEffect(() => {
     if (!user || !db) return;
-    const docIdExtra = `${formData.tanggal}_${activeSesi}`;
+    const docIdExtra = `${formData.tanggal}_${selectedSesi}`;
     const extraInputRef = doc(db, 'artifacts', appId, 'public', 'data', 'daily_extra', docIdExtra);
     const unsubExtraInput = onSnapshot(extraInputRef, (docSnap) => {
       if (docSnap.exists()) {
@@ -228,7 +228,7 @@ export default function App() {
       }
     });
     return () => unsubExtraInput();
-  }, [user, formData.tanggal, activeSesi]);
+  }, [user, formData.tanggal, selectedSesi]);
 
   const HARGA_K20 = 45000;
   const HARGA_K50 = 75000;
@@ -307,13 +307,13 @@ export default function App() {
       const trxKey = name.replace('Display', 'Trx');
       const trxValue = name === 'ecarDisplay' ? (rawNumber / 250000) : (rawNumber / 5000);
       
-      const docIdExtra = `${formData.tanggal}_${activeSesi}`;
+      const docIdExtra = `${formData.tanggal}_${selectedSesi}`;
 
       try {
         await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'daily_extra', docIdExtra), {
           [rawKey]: rawNumber, [trxKey]: trxValue,
           tanggal: formData.tanggal,
-          sesi: activeSesi
+          sesi: selectedSesi
         }, { merge: true });
       } catch (error) { console.error("Gagal simpan Ecar/Foto:", error); }
     }
@@ -349,7 +349,7 @@ export default function App() {
       } else {
         const now = new Date();
         payload.jam_input = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
-        payload.sesi = activeSesi;
+        payload.sesi = selectedSesi;
         await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'records'), payload);
       }
       setFormData(prev => ({ ...prev, nama: '', lokasi: '', topupDisplay: '', topupRaw: 0, topupDetails: [], tk20: '', tk50: '', ntk20: '', ntk50: '', ket: '' }));
@@ -415,7 +415,7 @@ export default function App() {
   const currentSums = calculateSums(filteredAndSortedRecords);
   
   const todaySesiRecords = useMemo(() => {
-    let filtered = records.filter(r => r.tanggal === formData.tanggal && r.sesi === activeSesi);
+    let filtered = records.filter(r => r.tanggal === formData.tanggal && r.sesi === selectedSesi);
     filtered.sort((a, b) => {
       const timeA = a.jam_input || '';
       const timeB = b.jam_input || '';
@@ -424,7 +424,7 @@ export default function App() {
       return 0;
     });
     return filtered;
-  }, [records, formData.tanggal, activeSesi, monitorSortDir]);
+  }, [records, formData.tanggal, selectedSesi, monitorSortDir]);
   
   const livePreviewSums = calculateSums(todaySesiRecords);
 
@@ -750,8 +750,18 @@ export default function App() {
               <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
                 <div className="bg-slate-50 p-5 border-b border-slate-200 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                   <div>
-                    <h3 className="font-bold text-slate-800 text-base">Monitor Transaksi Sesi {activeSesi}</h3>
-                    <p className="text-xs font-medium text-slate-500 mt-1">
+                    <div className="flex items-center gap-2 mb-1">
+                      <h3 className="font-bold text-slate-800 text-base">Monitor Transaksi Sesi</h3>
+                      <select 
+                        value={selectedSesi} 
+                        onChange={(e) => setSelectedSesi(e.target.value)} 
+                        className="border border-slate-300 rounded-lg px-2 py-1 outline-none focus:ring-2 focus:ring-emerald-500 text-sm font-bold text-emerald-700 bg-white shadow-sm cursor-pointer"
+                      >
+                        <option value="Siang">Siang</option>
+                        <option value="Malam">Malam</option>
+                      </select>
+                    </div>
+                    <p className="text-xs font-medium text-slate-500">
                       Data tercatat untuk tanggal: <span className="font-bold text-emerald-600">{formatTanggalStandard(formData.tanggal)}</span>
                     </p>
                   </div>
@@ -824,7 +834,7 @@ export default function App() {
                       <td className="p-4 border-l border-slate-200"></td>
                     </tr>
                   )}
-                  {todaySesiRecords.length === 0 && <tr><td colSpan="10" className="p-12 text-center text-slate-400 font-medium italic">Belum ada input transaksi di tanggal {formatTanggalStandard(formData.tanggal)} untuk Sesi {activeSesi}.</td></tr>}
+                  {todaySesiRecords.length === 0 && <tr><td colSpan="10" className="p-12 text-center text-slate-400 font-medium italic">Belum ada input transaksi di tanggal {formatTanggalStandard(formData.tanggal)} untuk Sesi {selectedSesi}.</td></tr>}
                   </tbody></table>
                 </div>
               </div>
@@ -834,7 +844,7 @@ export default function App() {
                 <div className="bg-indigo-50/50 p-5 border-b border-indigo-100">
                   <h3 className="font-bold text-indigo-900 text-base flex items-center gap-2">
                     <svg className="w-5 h-5 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
-                    Pendapatan Ekstra: <span className="text-indigo-600">{formatTanggalStandard(formData.tanggal)} (Sesi {activeSesi})</span>
+                    Pendapatan Ekstra: <span className="text-indigo-600">{formatTanggalStandard(formData.tanggal)} (Sesi {selectedSesi})</span>
                   </h3>
                 </div>
                 <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-8">
