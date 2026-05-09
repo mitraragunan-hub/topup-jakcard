@@ -1,5 +1,5 @@
 // @ts-nocheck
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from 'firebase/auth';
 import { getFirestore, collection, doc, addDoc, updateDoc, deleteDoc, onSnapshot, setDoc } from 'firebase/firestore';
@@ -50,7 +50,7 @@ export default function App() {
     }
   }, []);
 
-  // Helpers Tanggal Akurat (Mencegah Bug Zona Waktu)
+  // Helpers Tanggal & Terbilang
   const getTodayStr = () => {
     const d = new Date();
     const offset = d.getTimezoneOffset() * 60000;
@@ -78,6 +78,32 @@ export default function App() {
     return `${hari[date.getDay()]}, ${formatTanggalStandard(dateString)}`;
   };
 
+  const getDateParts = (dateString) => {
+    if(!dateString) return { hari: '', tgl: '', bln: '', thn: '' };
+    const d = parseLocalDate(dateString);
+    const hariArr = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
+    const blnArr = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
+    return {
+      hari: hariArr[d.getDay()], tgl: String(d.getDate()).padStart(2, '0'),
+      bln: blnArr[d.getMonth()], thn: d.getFullYear()
+    };
+  };
+
+  const terbilang = (angka) => {
+    angka = Math.abs(angka);
+    const bilangan = ['','Satu','Dua','Tiga','Empat','Lima','Enam','Tujuh','Delapan','Sembilan','Sepuluh','Sebelas'];
+    let result = '';
+    if (angka < 12) result = bilangan[angka];
+    else if (angka < 20) result = terbilang(angka - 10) + ' Belas';
+    else if (angka < 100) result = terbilang(Math.floor(angka / 10)) + ' Puluh ' + terbilang(angka % 10);
+    else if (angka < 200) result = 'Seratus ' + terbilang(angka - 100);
+    else if (angka < 1000) result = terbilang(Math.floor(angka / 100)) + ' Ratus ' + terbilang(angka % 100);
+    else if (angka < 2000) result = 'Seribu ' + terbilang(angka - 1000);
+    else if (angka < 1000000) result = terbilang(Math.floor(angka / 1000)) + ' Ribu ' + terbilang(angka % 1000);
+    else if (angka < 1000000000) result = terbilang(Math.floor(angka / 1000000)) + ' Juta ' + terbilang(angka % 1000000);
+    return result.trim();
+  };
+
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [activeTab, setActiveTab] = useState('input');
   const [reportType, setReportType] = useState('umum'); 
@@ -102,6 +128,7 @@ export default function App() {
 
   // State sementara untuk kalkulator EDC
   const [tempEdc, setTempEdc] = useState('');
+  const edcInputRef = useRef(null);
 
   const [editingId, setEditingId] = useState(null);
   const [extraInputData, setExtraInputData] = useState({ ecarDisplay: '', ecarRaw: 0, ecarTrx: 0, fotoDisplay: '', fotoRaw: 0, fotoTrx: 0 });
@@ -113,6 +140,9 @@ export default function App() {
   });
   const [sortConfig, setSortConfig] = useState({ key: 'tanggal', direction: 'desc' });
   const [monitorSortDir, setMonitorSortDir] = useState('desc');
+  
+  // State khusus untuk cetak bukti setor
+  const [selectedRecordForPrint, setSelectedRecordForPrint] = useState(null);
 
   const [records, setRecords] = useState([]);
   const [extraRecords, setExtraRecords] = useState([]);
@@ -236,6 +266,7 @@ export default function App() {
       tk20: record.tk20 || '', tk50: record.tk50 || '', ntk20: record.ntk20 || '', ntk50: record.ntk50 || '', ket: record.ket || ''
     });
     setEditingId(record.id);
+    setActiveTab('input');
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -252,6 +283,11 @@ export default function App() {
       const newTotal = newDetails.reduce((a, b) => a + b, 0);
       setFormData(prev => ({ ...prev, topupDetails: newDetails, topupRaw: newTotal, topupDisplay: formatRp(newTotal) }));
       setTempEdc(''); 
+      
+      // Auto-focus kembali ke input EDC
+      setTimeout(() => {
+        if (edcInputRef.current) edcInputRef.current.focus();
+      }, 0);
     }
   };
 
@@ -432,6 +468,9 @@ export default function App() {
           </button>
           
           <div className="text-slate-500 uppercase text-[10px] font-bold tracking-widest mb-2 mt-6 px-3">Modul Cetak Dokumen</div>
+          <button onClick={() => { setActiveTab('print3'); setSelectedRecordForPrint(null); setIsSidebarOpen(false); }} className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors ${activeTab === 'print3' ? 'bg-emerald-600 text-white shadow-md' : 'text-slate-300 hover:bg-slate-800 hover:text-white'}`}>
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg> Cetak Bukti Setor
+          </button>
           <button onClick={() => { setActiveTab('print1'); setIsSidebarOpen(false); }} className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors ${activeTab === 'print1' ? 'bg-emerald-600 text-white shadow-md' : 'text-slate-300 hover:bg-slate-800 hover:text-white'}`}>
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"></path></svg> Cetak Tabel Harian
           </button>
@@ -464,6 +503,7 @@ export default function App() {
               {activeTab === 'master' && 'Konfigurasi Master Data'}
               {activeTab === 'print1' && 'Pencetakan Tabel Harian'}
               {activeTab === 'print2' && 'Pencetakan Rekapitulasi'}
+              {activeTab === 'print3' && 'Pencetakan Bukti Setor'}
               {activeTab === 'laporan' && 'Laporan & Analitik Terpadu'}
             </h2>
             <div className="hidden sm:flex items-center gap-2 bg-emerald-50 px-3 py-1.5 rounded-full border border-emerald-200">
@@ -612,10 +652,12 @@ export default function App() {
                           <div className="w-1/2">
                             <label className="block text-xs font-semibold text-slate-600 mb-1.5">Kartu 20K</label>
                             <input type="number" name="tk20" value={formData.tk20} onChange={handleChange} className="w-full border border-slate-300 rounded-xl p-3 outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-center font-bold text-slate-800 transition-all" placeholder="0" />
+                            <div className="text-center mt-1.5 text-[11px] font-bold text-blue-600/80">Rp {formatRp((Number(formData.tk20) || 0) * HARGA_K20)}</div>
                           </div>
                           <div className="w-1/2">
                             <label className="block text-xs font-semibold text-slate-600 mb-1.5">Kartu 50K</label>
                             <input type="number" name="tk50" value={formData.tk50} onChange={handleChange} className="w-full border border-slate-300 rounded-xl p-3 outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-center font-bold text-slate-800 transition-all" placeholder="0" />
+                            <div className="text-center mt-1.5 text-[11px] font-bold text-blue-600/80">Rp {formatRp((Number(formData.tk50) || 0) * HARGA_K50)}</div>
                           </div>
                         </div>
                       </div>
@@ -626,10 +668,12 @@ export default function App() {
                           <div className="w-1/2">
                             <label className="block text-xs font-semibold text-slate-600 mb-1.5">Kartu 20K</label>
                             <input type="number" name="ntk20" value={formData.ntk20} onChange={handleChange} className="w-full border border-slate-300 rounded-xl p-3 outline-none focus:ring-2 focus:ring-orange-500 focus:border-orange-500 text-center font-bold text-slate-800 transition-all" placeholder="0" />
+                            <div className="text-center mt-1.5 text-[11px] font-bold text-orange-600/80">Rp {formatRp((Number(formData.ntk20) || 0) * HARGA_K20)}</div>
                           </div>
                           <div className="w-1/2">
                             <label className="block text-xs font-semibold text-slate-600 mb-1.5">Kartu 50K</label>
                             <input type="number" name="ntk50" value={formData.ntk50} onChange={handleChange} className="w-full border border-slate-300 rounded-xl p-3 outline-none focus:ring-2 focus:ring-orange-500 focus:border-orange-500 text-center font-bold text-slate-800 transition-all" placeholder="0" />
+                            <div className="text-center mt-1.5 text-[11px] font-bold text-orange-600/80">Rp {formatRp((Number(formData.ntk50) || 0) * HARGA_K50)}</div>
                           </div>
                         </div>
                       </div>
@@ -653,7 +697,7 @@ export default function App() {
                              <span className="text-[9px] text-emerald-600 bg-emerald-100 px-1.5 py-0.5 rounded font-semibold border border-emerald-200">Opsional</span>
                            </div>
                            <div className="flex gap-2">
-                             <input type="text" value={tempEdc} onChange={e => {
+                             <input type="text" ref={edcInputRef} value={tempEdc} onChange={e => {
                                 const val = e.target.value.replace(/\D/g, '');
                                 setTempEdc(val ? formatRp(Number(val)) : '');
                              }} placeholder="Ketik nominal struk EDC..." className="flex-1 border border-emerald-200 rounded-lg p-2.5 outline-none focus:border-emerald-500 text-sm font-semibold bg-white" 
@@ -681,11 +725,22 @@ export default function App() {
                       </div>
                     </div>
 
-                    <div className="flex justify-end pt-6 border-t border-slate-200 mt-8 gap-4">
-                      {editingId && <button type="button" onClick={cancelEdit} className="bg-white border border-slate-300 text-slate-700 font-semibold py-3 px-8 rounded-xl hover:bg-slate-50 transition-all">Batal Edit</button>}
-                      <button type="submit" className={`${editingId ? 'bg-blue-600 hover:bg-blue-700 shadow-blue-500/30' : 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-500/30'} text-white font-bold py-3 px-10 rounded-xl shadow-lg transition-all transform hover:-translate-y-0.5`}>
-                        {editingId ? 'Update Data Transaksi' : 'Simpan Transaksi Jakcard'}
-                      </button>
+                    <div className="flex flex-col sm:flex-row justify-between items-center pt-6 border-t border-slate-200 mt-8 gap-4">
+                      <div className="bg-slate-50 border border-slate-200 rounded-xl px-5 py-3 w-full sm:w-auto flex items-center justify-between sm:justify-start gap-6 shadow-sm">
+                        <div>
+                           <div className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-0.5">Total Setoran Tunai</div>
+                           <div className="text-[10px] text-slate-400 font-medium">Kartu Tunai: <span className="font-semibold text-slate-600">Rp {formatRp(((Number(formData.tk20) || 0) * HARGA_K20) + ((Number(formData.tk50) || 0) * HARGA_K50))}</span></div>
+                        </div>
+                        <div className="text-xl font-black text-slate-800">
+                           Rp {formatRp(((Number(formData.tk20) || 0) * HARGA_K20) + ((Number(formData.tk50) || 0) * HARGA_K50) + (Number(formData.topupRaw) || 0))}
+                        </div>
+                      </div>
+                      <div className="flex gap-4 w-full sm:w-auto">
+                        {editingId && <button type="button" onClick={cancelEdit} className="flex-1 sm:flex-none bg-white border border-slate-300 text-slate-700 font-semibold py-3 px-8 rounded-xl hover:bg-slate-50 transition-all">Batal Edit</button>}
+                        <button type="submit" className={`flex-1 sm:flex-none ${editingId ? 'bg-blue-600 hover:bg-blue-700 shadow-blue-500/30' : 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-500/30'} text-white font-bold py-3 px-10 rounded-xl shadow-lg transition-all transform hover:-translate-y-0.5`}>
+                          {editingId ? 'Update Data Transaksi' : 'Simpan Transaksi Jakcard'}
+                        </button>
+                      </div>
                     </div>
                   </form>
                 </div>
@@ -737,8 +792,14 @@ export default function App() {
                             <div className="text-[9px] text-slate-400 font-semibold mt-1">({r.topup_details.length} struk)</div>
                          )}
                       </td>
-                      <td className="p-4 text-center font-bold text-blue-600 text-xs border-l border-slate-100">{r.tk20 || 0}</td>
-                      <td className="p-4 text-center font-bold text-blue-600 text-xs">{r.tk50 || 0}</td>
+                      <td className="p-4 text-center border-l border-slate-100">
+                        <div className="font-bold text-blue-600 text-xs">{r.tk20 || 0}</div>
+                        {r.tk20 > 0 && <div className="text-[9px] text-slate-400 font-medium mt-0.5">Rp {formatRp(r.tk20 * HARGA_K20)}</div>}
+                      </td>
+                      <td className="p-4 text-center">
+                        <div className="font-bold text-blue-600 text-xs">{r.tk50 || 0}</div>
+                        {r.tk50 > 0 && <div className="text-[9px] text-slate-400 font-medium mt-0.5">Rp {formatRp(r.tk50 * HARGA_K50)}</div>}
+                      </td>
                       <td className="p-4 text-center font-bold text-orange-600 text-xs border-l border-slate-100">{r.ntk20 || 0}</td>
                       <td className="p-4 text-center font-bold text-orange-600 text-xs">{r.ntk50 || 0}</td>
                       <td className="p-4 text-right font-black text-slate-800 border-l border-slate-100">{formatRp(getRowTotal(r))}</td>
@@ -749,8 +810,14 @@ export default function App() {
                     <tr className="bg-slate-100/80 font-bold border-t-2 border-slate-200">
                       <td colSpan="3" className="p-4 text-center sm:text-right uppercase text-slate-700 text-xs tracking-wider">Total Keseluruhan</td>
                       <td className="p-4 text-right text-emerald-600">{formatRp(livePreviewSums.topup)}</td>
-                      <td className="p-4 text-center text-blue-700 border-l border-slate-200">{livePreviewSums.tk20}</td>
-                      <td className="p-4 text-center text-blue-700">{livePreviewSums.tk50}</td>
+                      <td className="p-4 text-center border-l border-slate-200">
+                        <div className="text-blue-700">{livePreviewSums.tk20}</div>
+                        {livePreviewSums.tk20 > 0 && <div className="text-[9px] text-slate-500 font-medium mt-0.5">Rp {formatRp(livePreviewSums.tk20 * HARGA_K20)}</div>}
+                      </td>
+                      <td className="p-4 text-center">
+                        <div className="text-blue-700">{livePreviewSums.tk50}</div>
+                        {livePreviewSums.tk50 > 0 && <div className="text-[9px] text-slate-500 font-medium mt-0.5">Rp {formatRp(livePreviewSums.tk50 * HARGA_K50)}</div>}
+                      </td>
                       <td className="p-4 text-center text-orange-700 border-l border-slate-200">{livePreviewSums.ntk20}</td>
                       <td className="p-4 text-center text-orange-700">{livePreviewSums.ntk50}</td>
                       <td className="p-4 text-right text-slate-900 border-l border-slate-200">{formatRp(livePreviewSums.total)}</td>
@@ -1008,7 +1075,7 @@ export default function App() {
             </div>
           )}
 
-          {/* TAB: CETAK TABEL */}
+          {/* TAB: CETAK TABEL (Print 1) */}
           <div className={activeTab === 'print1' ? 'block print:block max-w-7xl mx-auto' : 'hidden print:hidden'}>
             <div className="mb-6 print:hidden flex flex-col sm:flex-row justify-between items-center bg-white p-5 rounded-2xl border border-slate-200 shadow-sm"><div className="flex items-center gap-4"><span className="text-sm font-bold text-slate-700">Pengaturan Cetak:</span><select value={filter.sesi} onChange={e => setFilter({...filter, sesi: e.target.value})} className="border border-slate-300 rounded-lg p-2 outline-none font-semibold focus:ring-2 focus:ring-emerald-500 text-sm"><option value="">Gabungan Semua Sesi</option><option value="Siang">Sesi Siang</option><option value="Malam">Sesi Malam</option></select></div><button onClick={() => window.print()} className="bg-slate-800 hover:bg-slate-900 text-white font-bold py-2.5 px-8 rounded-xl shadow-md transition-all">Cetak PDF / Print</button></div>
             <div className="bg-white p-4 md:p-10 w-full min-h-[297mm] shadow-lg print:shadow-none text-xs sm:text-sm border border-slate-200"><div className="text-center mb-8 border-b-2 border-slate-800 pb-4"><h1 className="font-extrabold text-lg md:text-xl uppercase tracking-tight text-slate-900">REKAP PENERIMAAN SETORAN PENJUALAN KARTU JAKCARD DAN TOPUP</h1><h2 className="font-bold text-md uppercase text-slate-700">UNIT PENGELOLA TAMAN MARGASATWA RAGUNAN</h2></div><div className="flex justify-between mb-4 font-bold text-sm uppercase text-slate-800"><div>Hari/Tanggal : {filter.startDate === filter.endDate ? formatTanggalHari(filter.startDate) : (filter.startDate ? `${formatTanggalStandard(filter.startDate)} s/d ${formatTanggalStandard(filter.endDate)}` : 'SEMUA PERIODE')}</div><div>Sesi : {filter.sesi ? filter.sesi : 'SIANG & MALAM'}</div></div>
@@ -1019,7 +1086,7 @@ export default function App() {
             </div>
           </div>
 
-          {/* TAB: CETAK REKAP */}
+          {/* TAB: CETAK REKAP (Print 2) */}
           <div className={activeTab === 'print2' ? 'block print:block' : 'hidden print:hidden'}>
             <div className="mb-6 print:hidden flex justify-between items-center bg-white p-5 rounded-2xl border border-slate-200 max-w-[210mm] mx-auto shadow-sm">
               <div className="flex items-center gap-4">
@@ -1054,6 +1121,257 @@ export default function App() {
               <div className="mt-16 flex justify-between font-bold text-center px-10 text-slate-800"><div className="w-64"><div className="mb-20 uppercase tracking-wider text-xs text-slate-500">Bendahara Penerima</div><div className="border-b border-slate-800 text-base">{penandatangan.bendahara || '......................................'}</div></div><div className="w-64"><div className="mb-20 uppercase tracking-wider text-xs text-slate-500">Pemeriksa Setoran</div><div className="border-b border-slate-800 text-base">{penandatangan.pemeriksa || '......................................'}</div></div></div>
               <div className="mt-10 text-[10px] text-slate-400 font-medium text-right">Dicetak otomatis oleh Sistem Rekap TMR Cloud pada: {formatTanggalStandard(getTodayStr())}</div>
             </div>
+          </div>
+
+          {/* TAB: CETAK BUKTI SETOR (Print 3 - F4 Layout) */}
+          <div className={activeTab === 'print3' ? 'block' : 'hidden'}>
+            
+            {/* Tampilan 1: Tabel Pemilihan Data */}
+            {!selectedRecordForPrint && (
+              <div className="max-w-6xl mx-auto space-y-6 print:hidden">
+                <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                  <div>
+                    <h2 className="text-xl font-bold text-slate-800 tracking-tight mb-1">Cetak Bukti Setor & Berita Acara</h2>
+                    <p className="text-sm font-medium text-slate-500">Pilih data setoran petugas yang ingin dicetak ke lembar F4.</p>
+                  </div>
+                  <div className="flex gap-4">
+                    <input type="date" value={filter.startDate} onChange={e => setFilter({...filter, startDate: e.target.value, endDate: e.target.value})} className="border border-slate-300 rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-emerald-500 text-sm font-semibold" />
+                    <select value={filter.sesi} onChange={e => setFilter({...filter, sesi: e.target.value})} className="border border-slate-300 rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-emerald-500 text-sm font-semibold">
+                      <option value="">Semua Sesi</option><option value="Siang">Sesi Siang</option><option value="Malam">Sesi Malam</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+                  <table className="min-w-full text-sm text-left">
+                    <thead className="bg-slate-50 text-slate-600 font-bold uppercase tracking-wider text-[10px] border-b border-slate-200">
+                      <tr>
+                        <th className="p-4">Tanggal & Sesi</th>
+                        <th className="p-4">Nama Petugas</th>
+                        <th className="p-4">Lokasi Loket</th>
+                        <th className="p-4 text-right">Total Setoran (Tunai)</th>
+                        <th className="p-4 text-center">Aksi</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {filteredAndSortedRecords.map(r => (
+                        <tr key={r.id} className="hover:bg-slate-50 transition-colors">
+                          <td className="p-4 font-semibold text-slate-700">{formatTanggalStandard(r.tanggal)} <span className="text-[10px] bg-slate-200 px-2 py-0.5 rounded ml-2 uppercase">{r.sesi}</span></td>
+                          <td className="p-4 font-bold text-slate-800">{r.nama}</td>
+                          <td className="p-4 text-slate-600">{r.lokasi}</td>
+                          <td className="p-4 text-right font-black text-emerald-600">Rp {formatRp(getRowTotal(r))}</td>
+                          <td className="p-4 text-center">
+                            <button onClick={() => setSelectedRecordForPrint(r)} className="bg-emerald-100 hover:bg-emerald-600 hover:text-white text-emerald-700 font-bold py-1.5 px-4 rounded-lg transition-colors text-xs border border-emerald-200 shadow-sm">
+                              Pilih & Cetak
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                      {filteredAndSortedRecords.length === 0 && <tr><td colSpan="5" className="p-12 text-center text-slate-400 font-medium italic">Data tidak ditemukan. Silakan sesuaikan tanggal pencarian.</td></tr>}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {/* Tampilan 2: Layout F4 Print Ready */}
+            {selectedRecordForPrint && (
+              <div className="pb-10">
+                <div className="max-w-[215mm] mx-auto mb-6 print:hidden flex justify-between items-center bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+                  <button onClick={() => setSelectedRecordForPrint(null)} className="text-slate-500 hover:text-slate-800 font-semibold text-sm flex items-center gap-2">
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path></svg> Kembali ke Daftar
+                  </button>
+                  <button onClick={() => window.print()} className="bg-slate-800 hover:bg-slate-900 text-white font-bold py-2.5 px-8 rounded-lg shadow-md transition-all text-sm">
+                    Cetak Dokumen Sekarang
+                  </button>
+                </div>
+
+                {/* AREA KERTAS F4 */}
+                <div className="bg-white w-full sm:w-[215mm] min-h-[330mm] mx-auto p-6 sm:p-10 border border-slate-200 shadow-xl print:shadow-none print:border-none print:p-0 print:w-full font-sans text-slate-900 box-border relative">
+                  
+                  {/* BAGIAN 1: BUKTI SETOR BANK */}
+                  <div className="w-full">
+                    <div className="border-2 border-black mb-4 py-2 px-4 bg-slate-100/50">
+                      <h1 className="text-center font-bold text-lg uppercase tracking-wider">BUKTI SETOR BANK</h1>
+                    </div>
+
+                    <div className="grid grid-cols-[120px_10px_1fr] gap-y-1 font-semibold text-[13px] mb-4 px-2">
+                      <div>Hari/Tanggal</div><div>:</div><div>{formatTanggalHari(selectedRecordForPrint.tanggal)}</div>
+                      <div>Nama Petugas</div><div>:</div><div>{selectedRecordForPrint.nama}</div>
+                      <div>Nama Loket</div><div>:</div><div>{selectedRecordForPrint.lokasi}</div>
+                    </div>
+
+                    <table className="w-full border-collapse border-2 border-black text-[13px] font-semibold mb-6">
+                      <thead className="bg-slate-100/50">
+                        <tr>
+                          <th className="border-2 border-black p-2 w-10"></th>
+                          <th className="border-2 border-black p-2 uppercase">JENIS SETORAN</th>
+                          <th className="border-2 border-black p-2 uppercase w-40">NOMINAL</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <tr>
+                          <td className="border border-black p-2 text-center border-l-2">1</td>
+                          <td className="border border-black p-2">
+                            <div className="flex justify-between">
+                               <span>Penjualan Saldo 20.000 =</span>
+                               <span className="font-normal">x 45 ribu</span>
+                               <span className="w-10 text-center font-bold">{selectedRecordForPrint.tk20 || 0}</span>
+                            </div>
+                          </td>
+                          <td className="border border-black border-r-2 p-2">
+                            <div className="flex justify-between"><span>Rp.</span> <span>{formatRp((selectedRecordForPrint.tk20 || 0) * 45000)}</span></div>
+                          </td>
+                        </tr>
+                        <tr>
+                          <td className="border border-black p-2 text-center border-l-2">2</td>
+                          <td className="border border-black p-2">
+                            <div className="flex justify-between">
+                               <span>Penjualan Saldo 50.000 =</span>
+                               <span className="font-normal">x 75 ribu</span>
+                               <span className="w-10 text-center font-bold">{selectedRecordForPrint.tk50 || 0}</span>
+                            </div>
+                          </td>
+                          <td className="border border-black border-r-2 p-2">
+                            <div className="flex justify-between"><span>Rp.</span> <span>{formatRp((selectedRecordForPrint.tk50 || 0) * 75000)}</span></div>
+                          </td>
+                        </tr>
+                        <tr>
+                          <td className="border border-black p-2 text-center border-l-2">3</td>
+                          <td className="border border-black p-2">Top Up Tunai</td>
+                          <td className="border border-black border-r-2 p-2">
+                            <div className="flex justify-between"><span>Rp.</span> <span>{formatRp(selectedRecordForPrint.topup || 0)}</span></div>
+                          </td>
+                        </tr>
+                        <tr>
+                          <td className="border border-black p-2 text-center border-l-2">4</td>
+                          <td className="border border-black p-2 text-transparent select-none border-b border-dotted border-black mx-2 block w-[90%] h-5">.</td>
+                          <td className="border border-black border-r-2 p-2">
+                            <div className="flex justify-between"><span>Rp.</span> <span></span></div>
+                          </td>
+                        </tr>
+                        <tr>
+                          <td className="border border-black p-2 border-l-2"></td>
+                          <td className="border border-black p-2"></td>
+                          <td className="border border-black border-r-2 p-2">
+                            <div className="flex justify-between"><span>Rp.</span> <span></span></div>
+                          </td>
+                        </tr>
+                        <tr>
+                          <td colSpan="2" className="border border-black p-2 pl-4 border-l-2">Sub. Jumlah</td>
+                          <td className="border border-black border-r-2 p-2">
+                            <div className="flex justify-between"><span>Rp.</span> <span className="font-bold">{formatRp(getRowTotal(selectedRecordForPrint))}</span></div>
+                          </td>
+                        </tr>
+                        <tr>
+                          <td colSpan="2" className="border border-black p-2 pl-4 border-l-2">Setoran Awal</td>
+                          <td className="border border-black border-r-2 p-2">
+                            <div className="flex justify-between"><span>Rp.</span> <span></span></div>
+                          </td>
+                        </tr>
+                        <tr>
+                          <td colSpan="2" className="border-2 border-black p-2 pl-4 font-bold bg-slate-100/50">Jumlah Total</td>
+                          <td className="border-2 border-black p-2 bg-slate-100/50">
+                            <div className="flex justify-between font-bold"><span>Rp.</span> <span>{formatRp(getRowTotal(selectedRecordForPrint))}</span></div>
+                          </td>
+                        </tr>
+                      </tbody>
+                    </table>
+
+                    <div className="flex justify-between text-center text-[13px] font-semibold mt-8 px-4 pb-4">
+                      <div className="w-40 flex flex-col">
+                         <div className="mb-16">Bendahara Penerima,</div>
+                         <div>( <span className="inline-block w-32 border-b border-black border-dotted pb-0.5 text-xs">{penandatangan.bendahara}</span> )</div>
+                      </div>
+                      <div className="w-40 flex flex-col">
+                         <div className="mb-16">Petugas Bank DKI,</div>
+                         <div>( <span className="inline-block w-32 border-b border-black border-dotted pb-0.5"></span> )</div>
+                      </div>
+                      <div className="w-40 flex flex-col">
+                         <div className="mb-16">Petugas Loket,</div>
+                         <div>( <span className="inline-block w-32 border-b border-black border-dotted pb-0.5 text-xs">{selectedRecordForPrint.nama}</span> )</div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* GARIS POTONG */}
+                  <div className="w-full flex items-center justify-center my-8 print:my-10 opacity-60">
+                     <div className="flex-1 border-t-2 border-dashed border-slate-500"></div>
+                     <svg className="w-5 h-5 mx-2 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M14.121 14.121L19 19m-7-7l7-7m-7 7l-2.879 2.879M12 12L9.121 9.121m0 5.758a3 3 0 10-4.243 4.243 3 3 0 004.243-4.243zm0-5.758a3 3 0 10-4.243-4.243 3 3 0 004.243 4.243z"></path></svg>
+                     <div className="flex-1 border-t-2 border-dashed border-slate-500"></div>
+                  </div>
+
+                  {/* BAGIAN 2: BERITA ACARA */}
+                  <div className="w-full border-2 border-black p-1 box-border">
+                    <div className="w-full border border-black p-6 box-border min-h-[135mm] flex flex-col">
+                      
+                      <h2 className="text-center font-bold text-lg uppercase tracking-wider mb-8 underline underline-offset-4">BERITA ACARA SERAH TERIMA UANG</h2>
+
+                      <div className="text-[13px] font-semibold leading-relaxed space-y-4 flex-1">
+                        
+                        <div className="flex items-center gap-2">
+                           {(()=>{ const dp = getDateParts(selectedRecordForPrint.tanggal); return (
+                             <>
+                               Pada Hari Ini, <span className="inline-block w-20 text-center border-b border-black border-dotted pb-0.5">{dp.hari}</span> 
+                               Tanggal <span className="inline-block w-12 text-center border-b border-black border-dotted pb-0.5">{dp.tgl}</span> 
+                               Bulan <span className="inline-block w-24 text-center border-b border-black border-dotted pb-0.5">{dp.bln}</span> 
+                               Tahun <span className="inline-block w-16 text-center border-b border-black border-dotted pb-0.5">{dp.thn}</span>
+                             </>
+                           );})()}
+                        </div>
+                        <div>Pukul <span className="inline-block w-20 text-center border-b border-black border-dotted pb-0.5">{selectedRecordForPrint.jam_input}</span> WIB</div>
+
+                        <div className="mt-4">
+                          <div className="mb-1">Yang Menerima</div>
+                          <div className="grid grid-cols-[80px_10px_1fr] gap-y-1 pl-4">
+                            <div>Nama</div><div>:</div><div className="border-b border-black border-dotted w-64 pb-0.5">{penandatangan.pemeriksa}</div>
+                            <div>NIP</div><div>:</div><div className="border-b border-black border-dotted w-64 pb-0.5"></div>
+                          </div>
+                        </div>
+
+                        <div className="mt-8 flex flex-col gap-4">
+                           <div className="flex items-center gap-4">
+                              <span className="w-48">Telah menerima uang sejumlah Rp.</span>
+                              <div className="border-2 border-black bg-slate-50 px-4 py-2 w-64 text-base font-bold tracking-widest text-center box-border">
+                                {formatRp(getRowTotal(selectedRecordForPrint))}
+                              </div>
+                           </div>
+                           <div className="flex items-start gap-4">
+                              <span className="w-48 pt-3">Terbilang</span>
+                              <div className="border border-black bg-slate-50 px-4 py-3 flex-1 max-w-lg min-h-[60px] font-bold text-[13px] italic uppercase box-border flex items-center leading-relaxed">
+                                #{terbilang(getRowTotal(selectedRecordForPrint))} RUPIAH#
+                              </div>
+                           </div>
+                        </div>
+
+                        <div className="mt-8">
+                          <div className="mb-1">Yang Menyetor</div>
+                          <div className="grid grid-cols-[80px_10px_1fr] gap-y-1 pl-4">
+                            <div>Nama</div><div>:</div><div className="border-b border-black border-dotted w-64 pb-0.5">{selectedRecordForPrint.nama}</div>
+                            <div>NIP</div><div>:</div><div className="border-b border-black border-dotted w-64 pb-0.5"></div>
+                          </div>
+                        </div>
+
+                      </div>
+
+                      {/* Tanda Tangan Berita Acara */}
+                      <div className="mt-14 flex justify-between text-center text-[13px] font-semibold px-6 pb-2">
+                        <div className="w-48 flex flex-col">
+                           <div className="mb-20 leading-relaxed">Penerima<br/>Petugas Pemeriksa,</div>
+                           <div>( <span className="inline-block w-40 border-b border-black border-dotted pb-0.5 text-xs">{penandatangan.pemeriksa}</span> )</div>
+                        </div>
+                        <div className="w-48 flex flex-col">
+                           <div className="mb-20 leading-relaxed">Penyetor<br/>Petugas Loket,</div>
+                           <div>( <span className="inline-block w-40 border-b border-black border-dotted pb-0.5 text-xs">{selectedRecordForPrint.nama}</span> )</div>
+                        </div>
+                      </div>
+
+                    </div>
+                  </div>
+                </div>
+
+              </div>
+            )}
           </div>
 
         </div>
