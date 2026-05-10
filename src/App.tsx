@@ -142,8 +142,9 @@ export default function App() {
   const monitorRef = useRef(null);
   const edcInputRef = useRef(null);
 
-  // State untuk tombol "Up"
+  // State untuk tombol "Up" dan Sumber Print
   const [showUpButton, setShowUpButton] = useState(false);
+  const [printSource, setPrintSource] = useState(null); // 'input' atau 'print3'
 
   // State sementara untuk kalkulator EDC
   const [tempEdc, setTempEdc] = useState('');
@@ -597,7 +598,7 @@ export default function App() {
           </button>
           
           <div className="text-slate-500 uppercase text-[10px] font-bold tracking-widest mb-2 mt-6 px-3">Modul Cetak Dokumen</div>
-          <button onClick={() => { setActiveTab('print3'); setSelectedRecordForPrint(null); setIsSidebarOpen(false); }} className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors ${activeTab === 'print3' ? 'bg-emerald-600 text-white shadow-md' : 'text-slate-300 hover:bg-slate-800 hover:text-white'}`}>
+          <button onClick={() => { setActiveTab('print3'); setSelectedRecordForPrint(null); setPrintSource('print3'); setIsSidebarOpen(false); }} className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors ${activeTab === 'print3' ? 'bg-emerald-600 text-white shadow-md' : 'text-slate-300 hover:bg-slate-800 hover:text-white'}`}>
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg> Cetak Bukti Setor
           </button>
           <button onClick={() => { setActiveTab('print1'); setIsSidebarOpen(false); }} className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors ${activeTab === 'print1' ? 'bg-emerald-600 text-white shadow-md' : 'text-slate-300 hover:bg-slate-800 hover:text-white'}`}>
@@ -935,6 +936,7 @@ export default function App() {
                           <button onClick={() => {
                             setSelectedRecordForPrint(r);
                             setCustomBeritaAcaraNominal(getRowTotal(r));
+                            setPrintSource('input'); // Tandai bahwa klik dari Monitor Input
                             setActiveTab('print3');
                             document.getElementById('main-scroll-container')?.scrollTo({ top: 0, behavior: 'smooth' });
                           }} className="text-emerald-600 hover:text-emerald-800 bg-emerald-50 hover:bg-emerald-100 p-1.5 rounded transition-colors border border-emerald-100" title="Cetak Bukti Setor">
@@ -1318,7 +1320,11 @@ export default function App() {
                           <td className="p-4 text-slate-600">{r.lokasi}</td>
                           <td className="p-4 text-right font-black text-emerald-600">Rp {formatRp(getRowTotal(r))}</td>
                           <td className="p-4 text-center">
-                            <button onClick={() => { setSelectedRecordForPrint(r); setCustomBeritaAcaraNominal(getRowTotal(r)); }} className="bg-emerald-100 hover:bg-emerald-600 hover:text-white text-emerald-700 font-bold py-1.5 px-4 rounded-lg transition-colors text-xs border border-emerald-200 shadow-sm">
+                            <button onClick={() => { 
+                              setSelectedRecordForPrint(r); 
+                              setCustomBeritaAcaraNominal(getRowTotal(r)); 
+                              setPrintSource('print3'); // Berasal dari dalam tabel menu cetak
+                            }} className="bg-emerald-100 hover:bg-emerald-600 hover:text-white text-emerald-700 font-bold py-1.5 px-4 rounded-lg transition-colors text-xs border border-emerald-200 shadow-sm">
                               Pilih & Cetak
                             </button>
                           </td>
@@ -1335,7 +1341,20 @@ export default function App() {
             {selectedRecordForPrint && (
               <div className="pb-10">
                 <div className="max-w-[215mm] mx-auto mb-6 print:hidden bg-white p-4 sm:px-6 rounded-xl border border-slate-200 shadow-sm flex flex-col md:flex-row justify-between items-center gap-4">
-                  <button onClick={() => setSelectedRecordForPrint(null)} className="text-slate-500 hover:text-slate-800 font-semibold text-sm flex items-center gap-2">
+                  <button onClick={() => {
+                    if (printSource === 'input') {
+                      // Jika masuk dari Monitor Input, kembalikan ke Monitor Input
+                      setActiveTab('input');
+                      setSelectedRecordForPrint(null);
+                      setPrintSource(null);
+                      setTimeout(() => {
+                        monitorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                      }, 100);
+                    } else {
+                      // Jika masuk dari Menu Cetak, kembalikan ke tabel Menu Cetak
+                      setSelectedRecordForPrint(null);
+                    }
+                  }} className="text-slate-500 hover:text-slate-800 font-semibold text-sm flex items-center gap-2">
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path></svg> Kembali
                   </button>
                   <div className="flex-1 flex justify-center md:justify-end w-full md:w-auto">
