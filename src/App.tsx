@@ -104,6 +104,16 @@ export default function App() {
     return result.trim();
   };
 
+  // ==========================================
+  // STATE KEAMANAN / LOGIN
+  // ==========================================
+  const [isAppAuthenticated, setIsAppAuthenticated] = useState(() => {
+    return sessionStorage.getItem('tmr_app_auth') === 'true';
+  });
+  const [loginData, setLoginData] = useState({ username: '', password: '' });
+  const [loginError, setLoginError] = useState('');
+  const [showLogoutModal, setShowLogoutModal] = useState(false);
+
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [activeTab, setActiveTab] = useState('input');
   const [reportType, setReportType] = useState('umum'); 
@@ -143,6 +153,7 @@ export default function App() {
   
   // State khusus untuk cetak bukti setor
   const [selectedRecordForPrint, setSelectedRecordForPrint] = useState(null);
+  const [customBeritaAcaraNominal, setCustomBeritaAcaraNominal] = useState('');
 
   const [records, setRecords] = useState([]);
   const [extraRecords, setExtraRecords] = useState([]);
@@ -235,6 +246,29 @@ export default function App() {
   const formatRp = (angka) => new Intl.NumberFormat('id-ID').format(angka || 0);
   const getRowTotal = (row) => (row.topup || 0) + ((row.tk20 || 0) * HARGA_K20) + ((row.tk50 || 0) * HARGA_K50);
   
+  // Handler Keamanan (Login Submit)
+  const handleLoginSubmit = (e) => {
+    e.preventDefault();
+    if (loginData.username === 'admintmr' && loginData.password === 'tmr@1234') {
+      setIsAppAuthenticated(true);
+      sessionStorage.setItem('tmr_app_auth', 'true');
+      setLoginError('');
+    } else {
+      setLoginError('Username atau password tidak valid!');
+    }
+  };
+
+  const handleLogout = () => {
+    setShowLogoutModal(true);
+  };
+
+  const executeLogout = () => {
+    sessionStorage.removeItem('tmr_app_auth');
+    setIsAppAuthenticated(false);
+    setLoginData({ username: '', password: '' });
+    setShowLogoutModal(false);
+  };
+
   const updateMasterDB = async (payload) => {
     if (!user) return;
     try { await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'master'), payload, { merge: true }); } 
@@ -451,6 +485,68 @@ export default function App() {
     </div>
   );
 
+  // Tampilan Halaman Login jika belum autentikasi
+  if (!isAppAuthenticated) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-slate-50 font-sans p-4 relative overflow-hidden" style={{ fontFamily: "'Inter', sans-serif" }}>
+        {/* Dekorasi Background TMR */}
+        <div className="absolute top-0 left-0 w-full h-64 bg-emerald-600 rounded-b-[50px] shadow-lg"></div>
+        <div className="absolute top-10 left-10 w-32 h-32 bg-white opacity-10 rounded-full blur-2xl"></div>
+        <div className="absolute top-20 right-20 w-48 h-48 bg-emerald-400 opacity-20 rounded-full blur-3xl"></div>
+
+        <div className="bg-white p-8 sm:p-10 rounded-3xl shadow-xl shadow-slate-200/50 border border-slate-100 w-full max-w-md relative z-10">
+          <div className="text-center mb-8">
+            <div className="w-16 h-16 bg-emerald-50 text-emerald-600 rounded-2xl flex items-center justify-center mx-auto mb-5 shadow-sm border border-emerald-100">
+              <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path></svg>
+            </div>
+            <h1 className="text-2xl font-black text-slate-800 tracking-tight">Portal Rekap Topup-Jakcard</h1>
+            <p className="text-slate-500 text-sm font-medium mt-1">Silakan otorisasi akun untuk mengakses sistem</p>
+          </div>
+          
+          {loginError && (
+            <div className="bg-red-50 text-red-600 p-3.5 rounded-xl text-sm font-semibold mb-6 text-center border border-red-100 flex items-center justify-center gap-2 animate-pulse">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+              {loginError}
+            </div>
+          )}
+
+          <form onSubmit={handleLoginSubmit} className="space-y-5">
+            <div>
+              <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-widest mb-2">Username Akses</label>
+              <input 
+                type="text" 
+                value={loginData.username} 
+                onChange={(e) => setLoginData({...loginData, username: e.target.value})} 
+                className="w-full border border-slate-300 rounded-xl p-3.5 outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 font-semibold text-slate-800 transition-all bg-slate-50 focus:bg-white" 
+                placeholder="Ketik username Anda" 
+                required 
+              />
+            </div>
+            <div>
+              <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-widest mb-2">Kata Sandi</label>
+              <input 
+                type="password" 
+                value={loginData.password} 
+                onChange={(e) => setLoginData({...loginData, password: e.target.value})} 
+                className="w-full border border-slate-300 rounded-xl p-3.5 outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 font-semibold text-slate-800 transition-all bg-slate-50 focus:bg-white tracking-widest" 
+                placeholder="••••••••" 
+                required 
+              />
+            </div>
+            <button type="submit" className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3.5 rounded-xl shadow-lg shadow-emerald-500/30 transition-all transform hover:-translate-y-0.5 mt-2 text-sm tracking-wide">
+              Buka Kunci Sistem
+            </button>
+          </form>
+          
+          <div className="mt-8 text-center text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+            Sistem Informasi & Rekapitulasi Topup & Jakcard TMR &copy; {new Date().getFullYear()}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Tampilan Dashboard Utama
   return (
     <div className="flex h-screen bg-slate-50 text-slate-800 overflow-hidden relative" style={{ fontFamily: "'Inter', sans-serif" }}>
       {/* SIDEBAR */}
@@ -506,11 +602,17 @@ export default function App() {
               {activeTab === 'print3' && 'Pencetakan Bukti Setor'}
               {activeTab === 'laporan' && 'Laporan & Analitik Terpadu'}
             </h2>
-            <div className="hidden sm:flex items-center gap-2 bg-emerald-50 px-3 py-1.5 rounded-full border border-emerald-200">
-               <span className="relative flex h-2.5 w-2.5"><span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${user ? 'bg-emerald-400' : 'bg-amber-400'}`}></span><span className={`relative inline-flex rounded-full h-2.5 w-2.5 ${user ? 'bg-emerald-500' : 'bg-amber-500'}`}></span></span>
-               <span className={`text-xs font-semibold tracking-wide ${user ? 'text-emerald-700' : 'text-amber-700'}`}>
-                 {user ? 'Cloud Aktif' : 'Mode Offline'}
-               </span>
+            <div className="flex items-center gap-3">
+              <div className="hidden sm:flex items-center gap-2 bg-emerald-50 px-3 py-1.5 rounded-full border border-emerald-200">
+                 <span className="relative flex h-2.5 w-2.5"><span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${user ? 'bg-emerald-400' : 'bg-amber-400'}`}></span><span className={`relative inline-flex rounded-full h-2.5 w-2.5 ${user ? 'bg-emerald-500' : 'bg-amber-500'}`}></span></span>
+                 <span className={`text-xs font-semibold tracking-wide ${user ? 'text-emerald-700' : 'text-amber-700'}`}>
+                   {user ? 'Cloud Aktif' : 'Mode Offline'}
+                 </span>
+              </div>
+              <button onClick={handleLogout} className="text-xs font-bold text-red-600 bg-red-50 hover:bg-red-100 hover:text-red-700 border border-red-200 px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1.5 shadow-sm">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"></path></svg>
+                <span className="hidden sm:block">Keluar</span>
+              </button>
             </div>
           </div>
         </header>
@@ -794,7 +896,19 @@ export default function App() {
                   <tbody className="divide-y divide-slate-100">{todaySesiRecords.map(r => (
                     <tr key={r.id} className="hover:bg-slate-50 transition-colors">
                       <td className="p-4 font-medium text-slate-500 text-xs whitespace-nowrap">{r.jam_input} WIB</td>
-                      <td className="p-4 font-semibold text-slate-800">{r.nama}</td>
+                      <td className="p-4 font-semibold text-slate-800">
+                        <div className="flex items-center justify-between gap-2">
+                          <span>{r.nama}</span>
+                          <button onClick={() => {
+                            setSelectedRecordForPrint(r);
+                            setCustomBeritaAcaraNominal(getRowTotal(r));
+                            setActiveTab('print3');
+                            window.scrollTo({ top: 0, behavior: 'smooth' });
+                          }} className="text-emerald-600 hover:text-emerald-800 bg-emerald-50 hover:bg-emerald-100 p-1.5 rounded transition-colors border border-emerald-100" title="Cetak Bukti Setor">
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"></path></svg>
+                          </button>
+                        </div>
+                      </td>
                       <td className="p-4 text-slate-600">{r.lokasi}</td>
                       <td className="p-4 text-right font-bold text-emerald-600">
                          {formatRp(r.topup)}
@@ -1171,7 +1285,7 @@ export default function App() {
                           <td className="p-4 text-slate-600">{r.lokasi}</td>
                           <td className="p-4 text-right font-black text-emerald-600">Rp {formatRp(getRowTotal(r))}</td>
                           <td className="p-4 text-center">
-                            <button onClick={() => setSelectedRecordForPrint(r)} className="bg-emerald-100 hover:bg-emerald-600 hover:text-white text-emerald-700 font-bold py-1.5 px-4 rounded-lg transition-colors text-xs border border-emerald-200 shadow-sm">
+                            <button onClick={() => { setSelectedRecordForPrint(r); setCustomBeritaAcaraNominal(getRowTotal(r)); }} className="bg-emerald-100 hover:bg-emerald-600 hover:text-white text-emerald-700 font-bold py-1.5 px-4 rounded-lg transition-colors text-xs border border-emerald-200 shadow-sm">
                               Pilih & Cetak
                             </button>
                           </td>
@@ -1187,12 +1301,22 @@ export default function App() {
             {/* Tampilan 2: Layout F4 Print Ready */}
             {selectedRecordForPrint && (
               <div className="pb-10">
-                <div className="max-w-[215mm] mx-auto mb-6 print:hidden flex justify-between items-center bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+                <div className="max-w-[215mm] mx-auto mb-6 print:hidden bg-white p-4 sm:px-6 rounded-xl border border-slate-200 shadow-sm flex flex-col md:flex-row justify-between items-center gap-4">
                   <button onClick={() => setSelectedRecordForPrint(null)} className="text-slate-500 hover:text-slate-800 font-semibold text-sm flex items-center gap-2">
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path></svg> Kembali ke Daftar
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path></svg> Kembali
                   </button>
-                  <button onClick={() => window.print()} className="bg-slate-800 hover:bg-slate-900 text-white font-bold py-2.5 px-8 rounded-lg shadow-md transition-all text-sm">
-                    Cetak Dokumen Sekarang
+                  <div className="flex-1 flex items-center justify-center gap-3 w-full md:w-auto">
+                    <label className="text-xs font-bold text-slate-500 uppercase tracking-wider hidden sm:block">Penyesuaian Nominal B.A:</label>
+                    <div className="relative">
+                      <span className="absolute inset-y-0 left-0 pl-3 flex items-center text-slate-400 font-bold text-sm">Rp</span>
+                      <input type="text" value={customBeritaAcaraNominal !== '' ? formatRp(customBeritaAcaraNominal) : ''} onChange={(e) => {
+                        const val = e.target.value.replace(/\D/g, '');
+                        setCustomBeritaAcaraNominal(val ? Number(val) : '');
+                      }} className="w-full sm:w-44 border border-slate-300 rounded-lg pl-9 p-2 outline-none focus:ring-2 focus:ring-emerald-500 font-bold text-emerald-700 text-sm bg-slate-50" title="Sesuaikan jika fisik uang berbeda" placeholder="Sesuai Sistem" />
+                    </div>
+                  </div>
+                  <button onClick={() => window.print()} className="bg-slate-800 hover:bg-slate-900 text-white font-bold py-2.5 px-6 rounded-lg shadow-md transition-all text-sm flex items-center gap-2">
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"></path></svg> Cetak
                   </button>
                 </div>
 
@@ -1343,13 +1467,13 @@ export default function App() {
                            <div className="flex items-center gap-4">
                               <span className="w-48">Telah menerima uang sejumlah Rp.</span>
                               <div className="border-2 border-black bg-slate-50 px-4 py-2 w-64 text-base font-bold tracking-widest text-center box-border">
-                                {formatRp(getRowTotal(selectedRecordForPrint))}
+                                {formatRp(customBeritaAcaraNominal !== '' ? customBeritaAcaraNominal : getRowTotal(selectedRecordForPrint))}
                               </div>
                            </div>
                            <div className="flex items-start gap-4">
                               <span className="w-48 pt-3">Terbilang</span>
                               <div className="border border-black bg-slate-50 px-4 py-3 flex-1 max-w-lg min-h-[60px] font-bold text-[13px] italic uppercase box-border flex items-center leading-relaxed">
-                                #{terbilang(getRowTotal(selectedRecordForPrint))} RUPIAH#
+                                #{terbilang(customBeritaAcaraNominal !== '' ? customBeritaAcaraNominal : getRowTotal(selectedRecordForPrint))} RUPIAH#
                               </div>
                            </div>
                         </div>
@@ -1386,6 +1510,24 @@ export default function App() {
 
         </div>
       </main>
+
+      {/* MODAL KONFIRMASI LOGOUT */}
+      {showLogoutModal && (
+        <div className="fixed inset-0 bg-slate-900/60 z-[100] flex items-center justify-center p-4 backdrop-blur-sm print:hidden">
+          <div className="bg-white p-6 rounded-3xl shadow-2xl max-w-sm w-full border border-slate-100 transform transition-all">
+            <div className="w-12 h-12 bg-red-50 text-red-600 rounded-full flex items-center justify-center mb-4 border border-red-100">
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"></path></svg>
+            </div>
+            <h3 className="text-xl font-bold text-slate-800 mb-2">Konfirmasi Keluar</h3>
+            <p className="text-sm text-slate-600 mb-8 font-medium">Anda yakin ingin mengunci layar dan keluar dari sistem?</p>
+            <div className="flex gap-3 justify-end">
+              <button onClick={() => setShowLogoutModal(false)} className="px-5 py-2.5 text-sm font-bold text-slate-600 hover:bg-slate-100 rounded-xl transition-colors border border-slate-200">Batal</button>
+              <button onClick={executeLogout} className="px-5 py-2.5 text-sm font-bold text-white bg-red-600 hover:bg-red-700 rounded-xl shadow-md shadow-red-500/30 transition-all">Ya, Keluar</button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }
