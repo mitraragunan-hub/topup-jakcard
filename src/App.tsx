@@ -113,6 +113,7 @@ export default function App() {
   const [loginData, setLoginData] = useState({ username: '', password: '' });
   const [loginError, setLoginError] = useState('');
   const [showLogoutModal, setShowLogoutModal] = useState(false);
+  const [deleteInfo, setDeleteInfo] = useState({ show: false, id: null });
 
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [activeTab, setActiveTab] = useState('input');
@@ -136,9 +137,16 @@ export default function App() {
   const getActiveSesi = () => new Date().getHours() >= 20 ? 'Malam' : 'Siang';
   const [selectedSesi, setSelectedSesi] = useState(getActiveSesi());
 
+  // Refs untuk fitur Auto-Scroll
+  const formRef = useRef(null);
+  const monitorRef = useRef(null);
+  const edcInputRef = useRef(null);
+
+  // State untuk tombol "Up"
+  const [showUpButton, setShowUpButton] = useState(false);
+
   // State sementara untuk kalkulator EDC
   const [tempEdc, setTempEdc] = useState('');
-  const edcInputRef = useRef(null);
 
   const [editingId, setEditingId] = useState(null);
   const [extraInputData, setExtraInputData] = useState({ ecarDisplay: '', ecarRaw: 0, ecarTrx: 0, fotoDisplay: '', fotoRaw: 0, fotoTrx: 0 });
@@ -246,6 +254,15 @@ export default function App() {
   const formatRp = (angka) => new Intl.NumberFormat('id-ID').format(angka || 0);
   const getRowTotal = (row) => (row.topup || 0) + ((row.tk20 || 0) * HARGA_K20) + ((row.tk50 || 0) * HARGA_K50);
   
+  // Handler Scroll untuk mendeteksi visibilitas tombol UP
+  const handleScroll = (e) => {
+    if (e.target.scrollTop > 350) {
+      setShowUpButton(true);
+    } else {
+      setShowUpButton(false);
+    }
+  };
+
   // Handler Keamanan (Login Submit)
   const handleLoginSubmit = (e) => {
     e.preventDefault();
@@ -301,7 +318,10 @@ export default function App() {
     });
     setEditingId(record.id);
     setActiveTab('input');
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    // Scroll mulus ke form input teratas saat edit diklik
+    setTimeout(() => {
+      document.getElementById('main-scroll-container')?.scrollTo({ top: 0, behavior: 'smooth' });
+    }, 100);
   };
 
   const cancelEdit = () => {
@@ -388,14 +408,27 @@ export default function App() {
       }
       setFormData(prev => ({ ...prev, nama: '', lokasi: '', topupDisplay: '', topupRaw: 0, topupDetails: [], tk20: '', tk50: '', ntk20: '', ntk50: '', ket: '' }));
       alert("✅ Data berhasil disimpan dengan aman!");
+      
+      // Auto-Scroll ke tabel Monitor setelah input tersimpan
+      setTimeout(() => {
+        monitorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }, 150);
+
     } catch (error) { alert("⚠️ GAGAL MENYIMPAN KE CLOUD!"); }
   };
   
-  const hapusData = async (id) => { 
-    if (!user) return;
-    if(window.confirm('Hapus permanen data ini dari cloud?')) {
-      try { await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'records', id)); } 
-      catch (error) { alert("⚠️ Gagal menghapus!"); }
+  const hapusData = (id) => { 
+    setDeleteInfo({ show: true, id });
+  };
+
+  const executeDelete = async () => {
+    if (!user || !deleteInfo.id) return;
+    try { 
+      await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'records', deleteInfo.id)); 
+      setDeleteInfo({ show: false, id: null });
+    } catch (error) { 
+      alert("⚠️ Gagal menghapus!"); 
+      setDeleteInfo({ show: false, id: null });
     }
   };
 
@@ -586,7 +619,7 @@ export default function App() {
 
       {isSidebarOpen && <div className="fixed inset-0 bg-slate-900 bg-opacity-60 z-40 print:hidden backdrop-blur-sm transition-opacity" onClick={() => setIsSidebarOpen(false)}></div>}
 
-      <main className="flex-1 flex flex-col h-full w-full overflow-hidden">
+      <main className="flex-1 flex flex-col h-full w-full overflow-hidden relative">
         {/* HEADER ATAS */}
         <header className="bg-white shadow-sm print:hidden flex items-center px-6 py-4 border-b border-slate-200 z-10">
           <button onClick={() => setIsSidebarOpen(true)} className="mr-4 text-slate-500 hover:text-emerald-600 focus:outline-none transition-colors">
@@ -617,7 +650,7 @@ export default function App() {
           </div>
         </header>
 
-        <div className="flex-1 overflow-auto p-4 md:p-8 bg-slate-50/50 print:p-0 print:bg-white print:overflow-visible custom-scrollbar">
+        <div id="main-scroll-container" onScroll={handleScroll} className="flex-1 overflow-auto p-4 md:p-8 bg-slate-50/50 print:p-0 print:bg-white print:overflow-visible custom-scrollbar">
           
           {/* TAB: DATA MASTER */}
           {activeTab === 'master' && (
@@ -712,7 +745,7 @@ export default function App() {
             <div className="max-w-6xl mx-auto space-y-8">
               
               {/* SECTION 1: FORM UTAMA */}
-              <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+              <div ref={formRef} className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
                 <div className="bg-slate-50 px-6 py-4 border-b border-slate-200">
                   <h3 className="font-bold text-slate-800 flex items-center gap-2">
                     <svg className="w-5 h-5 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
@@ -849,7 +882,7 @@ export default function App() {
               </div>
 
               {/* SECTION 2: MONITOR TRANSAKSI */}
-              <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+              <div ref={monitorRef} className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
                 <div className="bg-slate-50 p-5 border-b border-slate-200 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                   <div>
                     <div className="flex items-center gap-2 mb-1">
@@ -903,7 +936,7 @@ export default function App() {
                             setSelectedRecordForPrint(r);
                             setCustomBeritaAcaraNominal(getRowTotal(r));
                             setActiveTab('print3');
-                            window.scrollTo({ top: 0, behavior: 'smooth' });
+                            document.getElementById('main-scroll-container')?.scrollTo({ top: 0, behavior: 'smooth' });
                           }} className="text-emerald-600 hover:text-emerald-800 bg-emerald-50 hover:bg-emerald-100 p-1.5 rounded transition-colors border border-emerald-100" title="Cetak Bukti Setor">
                             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"></path></svg>
                           </button>
@@ -1515,6 +1548,19 @@ export default function App() {
             )}
           </div>
 
+          {/* Tombol Terapung (Floating Action Button) untuk kembali ke atas */}
+          {activeTab === 'input' && showUpButton && (
+            <button
+              onClick={() => {
+                document.getElementById('main-scroll-container')?.scrollTo({ top: 0, behavior: 'smooth' });
+              }}
+              className="fixed bottom-8 right-8 bg-slate-800 hover:bg-slate-900 text-white p-3.5 rounded-full shadow-[0_4px_20px_rgba(0,0,0,0.2)] transition-all transform hover:-translate-y-1 z-50 print:hidden border border-slate-700 flex items-center justify-center group"
+              title="Kembali ke form atas"
+            >
+              <svg className="w-6 h-6 group-hover:-translate-y-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M5 15l7-7 7 7"></path></svg>
+            </button>
+          )}
+
         </div>
       </main>
 
@@ -1530,6 +1576,23 @@ export default function App() {
             <div className="flex gap-3 justify-end">
               <button onClick={() => setShowLogoutModal(false)} className="px-5 py-2.5 text-sm font-bold text-slate-600 hover:bg-slate-100 rounded-xl transition-colors border border-slate-200">Batal</button>
               <button onClick={executeLogout} className="px-5 py-2.5 text-sm font-bold text-white bg-red-600 hover:bg-red-700 rounded-xl shadow-md shadow-red-500/30 transition-all">Ya, Keluar</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL KONFIRMASI HAPUS DATA */}
+      {deleteInfo.show && (
+        <div className="fixed inset-0 bg-slate-900/60 z-[100] flex items-center justify-center p-4 backdrop-blur-sm print:hidden">
+          <div className="bg-white p-6 rounded-3xl shadow-2xl max-w-sm w-full border border-slate-100 transform transition-all">
+            <div className="w-12 h-12 bg-red-50 text-red-600 rounded-full flex items-center justify-center mb-4 border border-red-100">
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+            </div>
+            <h3 className="text-xl font-bold text-slate-800 mb-2">Konfirmasi Hapus Data</h3>
+            <p className="text-sm text-slate-600 mb-8 font-medium">Anda yakin ingin menghapus data transaksi ini secara permanen dari cloud? Tindakan ini tidak dapat dibatalkan.</p>
+            <div className="flex gap-3 justify-end">
+              <button onClick={() => setDeleteInfo({ show: false, id: null })} className="px-5 py-2.5 text-sm font-bold text-slate-600 hover:bg-slate-100 rounded-xl transition-colors border border-slate-200">Batal</button>
+              <button onClick={executeDelete} className="px-5 py-2.5 text-sm font-bold text-white bg-red-600 hover:bg-red-700 rounded-xl shadow-md shadow-red-500/30 transition-all">Ya, Hapus Data</button>
             </div>
           </div>
         </div>
