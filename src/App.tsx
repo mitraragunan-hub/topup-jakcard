@@ -162,7 +162,8 @@ export default function App() {
   
   // State khusus untuk cetak bukti setor
   const [selectedRecordForPrint, setSelectedRecordForPrint] = useState(null);
-  const [customBeritaAcaraNominal, setCustomBeritaAcaraNominal] = useState('');
+  const [customBaRaw, setCustomBaRaw] = useState('');
+  const [customBaDisplay, setCustomBaDisplay] = useState('');
 
   const [records, setRecords] = useState([]);
   const [extraRecords, setExtraRecords] = useState([]);
@@ -390,11 +391,15 @@ export default function App() {
     e.preventDefault();
     if (!user) return;
 
+    const now = new Date();
+    const jamInput = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+
     const payload = {
       tanggal: formData.tanggal, nama: formData.nama, lokasi: formData.lokasi,
       topup: formData.topupRaw, topup_details: formData.topupDetails, ket: formData.ket,
       tk20: Number(formData.tk20) || 0, tk50: Number(formData.tk50) || 0,
       ntk20: Number(formData.ntk20) || 0, ntk50: Number(formData.ntk50) || 0,
+      jam_input: jamInput // Selalu ter-update agar naik ke paling atas
     };
 
     try {
@@ -402,8 +407,6 @@ export default function App() {
         await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'records', editingId), payload);
         setEditingId(null);
       } else {
-        const now = new Date();
-        payload.jam_input = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
         payload.sesi = selectedSesi;
         await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'records'), payload);
       }
@@ -935,7 +938,8 @@ export default function App() {
                           <span>{r.nama}</span>
                           <button onClick={() => {
                             setSelectedRecordForPrint(r);
-                            setCustomBeritaAcaraNominal(getRowTotal(r));
+                            setCustomBaRaw(getRowTotal(r));
+                            setCustomBaDisplay(formatRp(getRowTotal(r)));
                             setPrintSource('input'); // Tandai bahwa klik dari Monitor Input
                             setActiveTab('print3');
                             document.getElementById('main-scroll-container')?.scrollTo({ top: 0, behavior: 'smooth' });
@@ -1265,9 +1269,9 @@ export default function App() {
               <div className="flex justify-between font-bold mb-4 pb-2 text-[13px] text-slate-800"><div>HARI/TANGGAL : {filter.startDate === filter.endDate ? formatTanggalHari(filter.startDate) : (filter.startDate ? `${formatTanggalStandard(filter.startDate)} s/d ${formatTanggalStandard(filter.endDate)}` : 'SEMUA PERIODE')}</div><div className="uppercase">OPERASIONAL : {filter.sesi ? filter.sesi : 'FULL SESSION'}</div></div>
               
               <div className="border-2 border-slate-800">
-                <div className="flex p-5"><div className="w-[30%] font-bold uppercase text-slate-600 tracking-wider text-xs pt-1">Penjualan Kartu</div><div className="w-[70%] text-slate-800"><div className="flex mb-2 font-semibold"><div className="w-16">K. 20</div><div className="w-4">=</div><div className="w-12 text-center">{(currentSums.tk20 || 0) + (currentSums.ntk20 || 0)}</div><div className="w-10 text-xs text-center mt-0.5 text-slate-500">Pcs</div><div className="w-6 text-center text-slate-400">x</div><div className="w-8">Rp.</div><div className="w-20 text-right">25.000</div><div className="w-6 text-center text-slate-400">=</div><div className="w-8 text-slate-500">Rp.</div><div className="w-24 text-right">{formatRp(reportData.kartu20Rp)}</div><div className="w-8"></div></div><div className="flex mb-2 font-semibold"><div className="w-16">K. 50</div><div className="w-4">=</div><div className="w-12 text-center">{(currentSums.tk50 || 0) + (currentSums.ntk50 || 0)}</div><div className="w-10 text-xs text-center mt-0.5 text-slate-500">Pcs</div><div className="w-6 text-center text-slate-400">x</div><div className="w-8">Rp.</div><div className="w-20 text-right">25.000</div><div className="w-6 text-center text-slate-400">=</div><div className="w-8 border-b border-slate-800 pb-1 text-slate-500">Rp.</div><div className="w-24 text-right border-b border-slate-800 pb-1">{formatRp(reportData.kartu50Rp)}</div><div className="w-8 text-center font-bold mt-1 text-slate-500">(+)</div></div><div className="flex mt-3 font-bold"><div className="flex-1 text-right pr-6 uppercase text-slate-600 text-xs tracking-wider pt-1">Total Kartu :</div><div className="w-8 text-slate-600">Rp.</div><div className="w-24 text-right text-base">{formatRp(totalKartu)}</div><div className="w-8"></div></div></div></div>
+                <div className="flex p-5"><div className="w-[30%] font-bold uppercase text-slate-600 tracking-wider text-xs pt-1">Penjualan Kartu</div><div className="w-[70%] text-slate-800"><div className="flex mb-2 font-semibold"><div className="w-16">K. 20</div><div className="w-4">=</div><div className="w-12 text-center">{currentSums.tk20 || 0}</div><div className="w-10 text-xs text-center mt-0.5 text-slate-500">Pcs</div><div className="w-6 text-center text-slate-400">x</div><div className="w-8">Rp.</div><div className="w-20 text-right">25.000</div><div className="w-6 text-center text-slate-400">=</div><div className="w-8 text-slate-500">Rp.</div><div className="w-24 text-right">{formatRp(reportData.kartu20Rp)}</div><div className="w-8"></div></div><div className="flex mb-2 font-semibold"><div className="w-16">K. 50</div><div className="w-4">=</div><div className="w-12 text-center">{currentSums.tk50 || 0}</div><div className="w-10 text-xs text-center mt-0.5 text-slate-500">Pcs</div><div className="w-6 text-center text-slate-400">x</div><div className="w-8">Rp.</div><div className="w-20 text-right">25.000</div><div className="w-6 text-center text-slate-400">=</div><div className="w-8 border-b border-slate-800 pb-1 text-slate-500">Rp.</div><div className="w-24 text-right border-b border-slate-800 pb-1">{formatRp(reportData.kartu50Rp)}</div><div className="w-8 text-center font-bold mt-1 text-slate-500">(+)</div></div><div className="flex mt-3 font-bold"><div className="flex-1 text-right pr-6 uppercase text-slate-600 text-xs tracking-wider pt-1">Total Kartu :</div><div className="w-8 text-slate-600">Rp.</div><div className="w-24 text-right text-base">{formatRp(totalKartu)}</div><div className="w-8"></div></div></div></div>
                 <div className="border-t border-dashed border-slate-300 mx-5"></div>
-                <div className="flex p-5"><div className="w-[30%] font-bold uppercase text-slate-600 tracking-wider text-xs pt-1">Isi Saldo</div><div className="w-[70%] text-slate-800"><div className="flex mb-2 font-semibold"><div className="w-16">S. 20</div><div className="w-4">=</div><div className="w-12 text-center">{(currentSums.tk20 || 0) + (currentSums.ntk20 || 0)}</div><div className="w-10 text-xs text-center mt-0.5 text-slate-500">Pcs</div><div className="w-6 text-center text-slate-400">x</div><div className="w-8">Rp.</div><div className="w-20 text-right">20.000</div><div className="w-6 text-center text-slate-400">=</div><div className="w-8 text-slate-500">Rp.</div><div className="w-24 text-right">{formatRp(reportData.saldo20Rp)}</div><div className="w-8"></div></div><div className="flex mb-2 font-semibold"><div className="w-16">S. 50</div><div className="w-4">=</div><div className="w-12 text-center">{(currentSums.tk50 || 0) + (currentSums.ntk50 || 0)}</div><div className="w-10 text-xs text-center mt-0.5 text-slate-500">Pcs</div><div className="w-6 text-center text-slate-400">x</div><div className="w-8">Rp.</div><div className="w-20 text-right">50.000</div><div className="w-6 text-center text-slate-400">=</div><div className="w-8 border-b border-slate-800 pb-1 text-slate-500">Rp.</div><div className="w-24 text-right border-b border-slate-800 pb-1">{formatRp(reportData.saldo50Rp)}</div><div className="w-8 text-center font-bold mt-1 text-slate-500">(+)</div></div><div className="flex mt-3 font-bold"><div className="flex-1 text-right pr-6 uppercase text-slate-600 text-xs tracking-wider pt-1">Total Saldo :</div><div className="w-8 text-slate-600">Rp.</div><div className="w-24 text-right text-base">{formatRp(totalSaldo)}</div><div className="w-8"></div></div></div></div>
+                <div className="flex p-5"><div className="w-[30%] font-bold uppercase text-slate-600 tracking-wider text-xs pt-1">Isi Saldo</div><div className="w-[70%] text-slate-800"><div className="flex mb-2 font-semibold"><div className="w-16">S. 20</div><div className="w-4">=</div><div className="w-12 text-center">{currentSums.tk20 || 0}</div><div className="w-10 text-xs text-center mt-0.5 text-slate-500">Pcs</div><div className="w-6 text-center text-slate-400">x</div><div className="w-8">Rp.</div><div className="w-20 text-right">20.000</div><div className="w-6 text-center text-slate-400">=</div><div className="w-8 text-slate-500">Rp.</div><div className="w-24 text-right">{formatRp(reportData.saldo20Rp)}</div><div className="w-8"></div></div><div className="flex mb-2 font-semibold"><div className="w-16">S. 50</div><div className="w-4">=</div><div className="w-12 text-center">{currentSums.tk50 || 0}</div><div className="w-10 text-xs text-center mt-0.5 text-slate-500">Pcs</div><div className="w-6 text-center text-slate-400">x</div><div className="w-8">Rp.</div><div className="w-20 text-right">50.000</div><div className="w-6 text-center text-slate-400">=</div><div className="w-8 border-b border-slate-800 pb-1 text-slate-500">Rp.</div><div className="w-24 text-right border-b border-slate-800 pb-1">{formatRp(reportData.saldo50Rp)}</div><div className="w-8 text-center font-bold mt-1 text-slate-500">(+)</div></div><div className="flex mt-3 font-bold"><div className="flex-1 text-right pr-6 uppercase text-slate-600 text-xs tracking-wider pt-1">Total Saldo :</div><div className="w-8 text-slate-600">Rp.</div><div className="w-24 text-right text-base">{formatRp(totalSaldo)}</div><div className="w-8"></div></div></div></div>
                 
                 <div className="border-t-2 border-slate-800 flex text-slate-900 bg-slate-50/50">
                   <div className="w-[55%] p-6 font-bold border-r-2 border-slate-800 flex flex-col justify-center"><div className="flex justify-between mb-2"><div className="w-40 uppercase text-xs tracking-wider pt-1 text-slate-600">Subtotal Jakcard</div><div className="w-4">:</div><div className="w-8 text-slate-500">Rp.</div><div className="flex-1 text-right text-base">{formatRp(totalPenjualanJakcard)}</div></div><div className="flex justify-between mb-3"><div className="w-40 uppercase text-xs tracking-wider pt-1 text-slate-600">Subtotal Top Up</div><div className="w-4">:</div><div className="w-8 border-b border-slate-800 pb-1 text-slate-500">Rp.</div><div className="flex-1 text-right border-b border-slate-800 pb-1 text-base">{formatRp(currentSums.topup)}</div></div><div className="flex justify-between mt-3 text-lg"><div className="w-40 text-right pr-4 uppercase tracking-widest text-slate-800">Grand Total</div><div className="w-4">:</div><div className="w-8 font-black">Rp.</div><div className="flex-1 text-right font-black">{formatRp(grandTotal)}</div></div></div>
@@ -1322,7 +1326,8 @@ export default function App() {
                           <td className="p-4 text-center">
                             <button onClick={() => { 
                               setSelectedRecordForPrint(r); 
-                              setCustomBeritaAcaraNominal(getRowTotal(r)); 
+                              setCustomBaRaw(getRowTotal(r)); 
+                              setCustomBaDisplay(formatRp(getRowTotal(r)));
                               setPrintSource('print3'); // Berasal dari dalam tabel menu cetak
                             }} className="bg-emerald-100 hover:bg-emerald-600 hover:text-white text-emerald-700 font-bold py-1.5 px-4 rounded-lg transition-colors text-xs border border-emerald-200 shadow-sm">
                               Pilih & Cetak
@@ -1511,13 +1516,13 @@ export default function App() {
                            <div className="flex items-center gap-4">
                               <span className="w-48">Telah menerima uang sejumlah Rp.</span>
                               <div className="border-2 border-black bg-slate-50 px-4 py-2 w-64 text-base font-bold tracking-widest text-center box-border">
-                                {formatRp(customBeritaAcaraNominal !== '' ? customBeritaAcaraNominal : getRowTotal(selectedRecordForPrint))}
+                                {formatRp(customBaRaw !== '' ? customBaRaw : getRowTotal(selectedRecordForPrint))}
                               </div>
                            </div>
                            <div className="flex items-start gap-4">
                               <span className="w-48 pt-3">Terbilang</span>
                               <div className="border border-black bg-slate-50 px-4 py-3 flex-1 max-w-lg min-h-[60px] font-bold text-[13px] italic uppercase box-border flex items-center leading-relaxed">
-                                #{terbilang(customBeritaAcaraNominal !== '' ? customBeritaAcaraNominal : getRowTotal(selectedRecordForPrint))} RUPIAH#
+                                #{terbilang(customBaRaw !== '' ? customBaRaw : getRowTotal(selectedRecordForPrint))} RUPIAH#
                               </div>
                            </div>
                         </div>
@@ -1556,10 +1561,11 @@ export default function App() {
                   </div>
                   <div className="relative w-full sm:w-auto">
                     <span className="absolute inset-y-0 left-0 pl-3 flex items-center text-slate-400 font-bold text-sm">Rp</span>
-                    <input type="text" value={customBeritaAcaraNominal !== '' ? formatRp(customBeritaAcaraNominal) : ''} onChange={(e) => {
+                    <input type="text" value={customBaDisplay} onChange={(e) => {
                       const val = e.target.value.replace(/\D/g, '');
-                      setCustomBeritaAcaraNominal(val ? Number(val) : '');
-                    }} className="w-full sm:w-64 border border-blue-300 rounded-lg pl-9 p-3 outline-none focus:ring-2 focus:ring-blue-500 font-bold text-blue-800 text-sm bg-white shadow-inner transition-all" title="Sesuaikan jika fisik uang berbeda" placeholder="Otomatis Sesuai Sistem" />
+                      setCustomBaDisplay(val ? formatRp(Number(val)) : '');
+                      setCustomBaRaw(val ? Number(val) : '');
+                    }} className="w-full sm:w-64 border border-blue-300 rounded-lg pl-9 p-3 outline-none focus:ring-2 focus:ring-blue-500 font-bold text-blue-800 text-sm bg-white shadow-inner transition-all" title="Sesuaikan jika fisik uang berbeda" placeholder="Ketik nominal beda..." />
                   </div>
                 </div>
 
