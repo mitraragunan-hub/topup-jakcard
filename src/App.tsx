@@ -1305,19 +1305,11 @@ export default function App() {
                   <button onClick={() => setSelectedRecordForPrint(null)} className="text-slate-500 hover:text-slate-800 font-semibold text-sm flex items-center gap-2">
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path></svg> Kembali
                   </button>
-                  <div className="flex-1 flex items-center justify-center gap-3 w-full md:w-auto">
-                    <label className="text-xs font-bold text-slate-500 uppercase tracking-wider hidden sm:block">Penyesuaian Nominal B.A:</label>
-                    <div className="relative">
-                      <span className="absolute inset-y-0 left-0 pl-3 flex items-center text-slate-400 font-bold text-sm">Rp</span>
-                      <input type="text" value={customBeritaAcaraNominal !== '' ? formatRp(customBeritaAcaraNominal) : ''} onChange={(e) => {
-                        const val = e.target.value.replace(/\D/g, '');
-                        setCustomBeritaAcaraNominal(val ? Number(val) : '');
-                      }} className="w-full sm:w-44 border border-slate-300 rounded-lg pl-9 p-2 outline-none focus:ring-2 focus:ring-emerald-500 font-bold text-emerald-700 text-sm bg-slate-50" title="Sesuaikan jika fisik uang berbeda" placeholder="Sesuai Sistem" />
-                    </div>
+                  <div className="flex-1 flex justify-center md:justify-end w-full md:w-auto">
+                    <button onClick={() => window.print()} className="w-full md:w-auto bg-slate-800 hover:bg-slate-900 text-white font-bold py-2.5 px-8 rounded-lg shadow-md transition-all text-sm flex items-center justify-center gap-2">
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"></path></svg> Cetak Dokumen F4
+                    </button>
                   </div>
-                  <button onClick={() => window.print()} className="bg-slate-800 hover:bg-slate-900 text-white font-bold py-2.5 px-6 rounded-lg shadow-md transition-all text-sm flex items-center gap-2">
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"></path></svg> Cetak
-                  </button>
                 </div>
 
                 {/* AREA KERTAS F4 */}
@@ -1501,6 +1493,21 @@ export default function App() {
                       </div>
 
                     </div>
+                  </div>
+                </div>
+                
+                {/* FORM PENYESUAIAN NOMINAL B.A DI BAWAH KERTAS */}
+                <div className="max-w-[215mm] mx-auto mt-6 print:hidden bg-blue-50/60 p-5 rounded-xl border border-blue-200 shadow-sm flex flex-col sm:flex-row justify-between items-center gap-4">
+                  <div>
+                    <h4 className="font-bold text-blue-900 text-sm">Penyesuaian Nominal Berita Acara</h4>
+                    <p className="text-xs text-blue-700/80 mt-1 font-medium">Isi kolom ini <span className="font-bold">hanya jika</span> fisik uang yang disetorkan berbeda dengan nominal perhitungan sistem di atas.</p>
+                  </div>
+                  <div className="relative w-full sm:w-auto">
+                    <span className="absolute inset-y-0 left-0 pl-3 flex items-center text-slate-400 font-bold text-sm">Rp</span>
+                    <input type="text" value={customBeritaAcaraNominal !== '' ? formatRp(customBeritaAcaraNominal) : ''} onChange={(e) => {
+                      const val = e.target.value.replace(/\D/g, '');
+                      setCustomBeritaAcaraNominal(val ? Number(val) : '');
+                    }} className="w-full sm:w-64 border border-blue-300 rounded-lg pl-9 p-3 outline-none focus:ring-2 focus:ring-blue-500 font-bold text-blue-800 text-sm bg-white shadow-inner transition-all" title="Sesuaikan jika fisik uang berbeda" placeholder="Otomatis Sesuai Sistem" />
                   </div>
                 </div>
 
