@@ -135,35 +135,32 @@ export default function App() {
     tk20: '', tk50: '', ntk20: '', ntk50: '', ket: ''
   });
 
-  // Logika jam: Jika di atas jam 20:00 (Malam), selain itu Siang. Ini menjadi default awal.
+  // STATE INLINE EDITING UNTUK TABEL MONITOR
+  const [inlineEditId, setInlineEditId] = useState(null);
+  const [inlineForm, setInlineForm] = useState(null);
+  const [inlineTempEdc, setInlineTempEdc] = useState('');
+  const inlineEdcInputRef = useRef(null);
+
   const getActiveSesi = () => new Date().getHours() >= 20 ? 'Malam' : 'Siang';
   const [selectedSesi, setSelectedSesi] = useState(getActiveSesi());
 
-  // Refs untuk fitur Auto-Scroll & Input Kursor
   const formRef = useRef(null);
   const monitorRef = useRef(null);
   const edcInputRef = useRef(null);
   const baInputRef = useRef(null);
 
-  // State untuk tombol "Up" dan Sumber Print
   const [showUpButton, setShowUpButton] = useState(false);
   const [printSource, setPrintSource] = useState(null);
 
-  // State sementara untuk kalkulator EDC
   const [tempEdc, setTempEdc] = useState('');
-
-  const [editingId, setEditingId] = useState(null);
   const [extraInputData, setExtraInputData] = useState({ ecarDisplay: '', ecarRaw: 0, ecarTrx: 0, fotoDisplay: '', fotoRaw: 0, fotoTrx: 0 });
 
   const [filter, setFilter] = useState({ 
-    startDate: getTodayStr(), 
-    endDate: getTodayStr(), 
-    sesi: '', lokasi: '', petugas: '' 
+    startDate: getTodayStr(), endDate: getTodayStr(), sesi: '', lokasi: '', petugas: '' 
   });
   const [sortConfig, setSortConfig] = useState({ key: 'tanggal', direction: 'desc' });
   const [monitorSortDir, setMonitorSortDir] = useState('desc');
   
-  // State khusus untuk cetak bukti setor & kursor BA
   const [selectedRecordForPrint, setSelectedRecordForPrint] = useState(null);
   const [customBaRaw, setCustomBaRaw] = useState('');
   const [customBaDisplay, setCustomBaDisplay] = useState('');
@@ -255,7 +252,7 @@ export default function App() {
     return () => unsubExtraInput();
   }, [user, formData.tanggal, selectedSesi]);
 
-  // Hook untuk mempertahankan kursor input Berita Acara setelah render
+  // Hook untuk kursor input B.A
   useEffect(() => {
     if (baCursorPos !== null && baInputRef.current) {
       baInputRef.current.setSelectionRange(baCursorPos, baCursorPos);
@@ -268,7 +265,6 @@ export default function App() {
   const formatRp = (angka) => new Intl.NumberFormat('id-ID').format(angka || 0);
   const getRowTotal = (row) => (row.topup || 0) + ((row.tk20 || 0) * HARGA_K20) + ((row.tk50 || 0) * HARGA_K50);
   
-  // Handler Scroll
   const handleScroll = (e) => {
     if (e.target.scrollTop > 350) setShowUpButton(true);
     else setShowUpButton(false);
@@ -317,22 +313,93 @@ export default function App() {
   const startEditPetugas = (idx) => { setEditPetugasIdx(idx); setEditPetugasValue(petugasList[idx]); };
   const saveEditPetugas = (idx) => { const newList = [...petugasList]; newList[idx] = editPetugasValue; updateMasterDB({ petugas: newList }); setEditPetugasIdx(null); };
 
-  const handleEdit = (record) => {
-    setFormData({
-      tanggal: record.tanggal, nama: record.nama, lokasi: record.lokasi,
-      topupDisplay: record.topup ? formatRp(record.topup) : '', topupRaw: record.topup || 0,
-      topupDetails: record.topup_details || [], 
-      tk20: record.tk20 || '', tk50: record.tk50 || '', ntk20: record.ntk20 || '', ntk50: record.ntk50 || '', ket: record.ket || ''
+  // ==========================================
+  // INLINE EDITING LOGIC (MENGGANTIKAN FORM EDIT ATAS)
+  // ==========================================
+  const startInlineEdit = (record) => {
+    setInlineEditId(record.id);
+    setInlineTempEdc('');
+    setInlineForm({
+      nama: record.nama,
+      lokasi: record.lokasi,
+      topupDisplay: record.topup ? formatRp(record.topup) : '',
+      topupRaw: record.topup || 0,
+      topupDetails: record.topup_details || [],
+      tk20: record.tk20 || '',
+      tk50: record.tk50 || '',
+      ntk20: record.ntk20 || '',
+      ntk50: record.ntk50 || '',
+      ket: record.ket || '' 
     });
-    setEditingId(record.id);
-    setActiveTab('input');
-    setTimeout(() => { document.getElementById('main-scroll-container')?.scrollTo({ top: 0, behavior: 'smooth' }); }, 100);
   };
 
-  const cancelEdit = () => {
-    setEditingId(null);
-    setFormData(prev => ({ ...prev, nama: '', lokasi: '', topupDisplay: '', topupRaw: 0, topupDetails: [], tk20: '', tk50: '', ntk20: '', ntk50: '', ket: '' }));
+  const handleInlineChange = (e) => {
+    const { name, value } = e.target;
+    if (name === 'topupDisplay') {
+      const rawValue = value.replace(/\D/g, '');
+      const rawNumber = Number(rawValue);
+      const resetDetails = inlineForm.topupDetails.length > 0 ? [] : inlineForm.topupDetails;
+      setInlineForm(prev => ({ ...prev, topupDisplay: rawValue ? formatRp(rawNumber) : '', topupRaw: rawNumber, topupDetails: resetDetails }));
+    } else {
+      setInlineForm(prev => ({ ...prev, [name]: value }));
+    }
   };
+
+  const saveInlineEdit = async () => {
+    if (!user || !inlineEditId) return;
+    const payload = {
+      nama: inlineForm.nama,
+      lokasi: inlineForm.lokasi,
+      topup: inlineForm.topupRaw,
+      topup_details: inlineForm.topupDetails,
+      ket: inlineForm.ket,
+      tk20: Number(inlineForm.tk20) || 0,
+      tk50: Number(inlineForm.tk50) || 0,
+      ntk20: Number(inlineForm.ntk20) || 0,
+      ntk50: Number(inlineForm.ntk50) || 0,
+    };
+    try {
+      await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'records', inlineEditId), payload);
+      setInlineEditId(null);
+      setInlineForm(null);
+    } catch (error) {
+      alert("⚠️ GAGAL MENGUPDATE DATA!");
+    }
+  };
+
+  const cancelInlineEdit = () => {
+    setInlineEditId(null);
+    setInlineForm(null);
+    setInlineTempEdc('');
+  };
+
+  const handleAddInlineEdc = () => {
+    const val = Number(inlineTempEdc.replace(/\D/g, ''));
+    if (val > 0) {
+      const newDetails = [...(inlineForm.topupDetails || []), val];
+      const newTotal = newDetails.reduce((a, b) => a + b, 0);
+      setInlineForm(prev => ({
+        ...prev,
+        topupDetails: newDetails,
+        topupRaw: newTotal,
+        topupDisplay: formatRp(newTotal)
+      }));
+      setInlineTempEdc('');
+      setTimeout(() => { if (inlineEdcInputRef.current) inlineEdcInputRef.current.focus(); }, 0);
+    }
+  };
+
+  const handleRemoveInlineEdc = (index) => {
+    const newDetails = inlineForm.topupDetails.filter((_, i) => i !== index);
+    const newTotal = newDetails.reduce((a, b) => a + b, 0);
+    setInlineForm(prev => ({
+      ...prev,
+      topupDetails: newDetails,
+      topupRaw: newTotal,
+      topupDisplay: newTotal ? formatRp(newTotal) : ''
+    }));
+  };
+  // ==========================================
 
   const handleAddEdc = () => {
     const val = Number(tempEdc.replace(/\D/g, ''));
@@ -385,6 +452,7 @@ export default function App() {
     }
   };
   
+  // Submit SEKARANG HANYA UNTUK TAMBAH DATA BARU (Add)
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!user) return;
@@ -397,17 +465,12 @@ export default function App() {
       topup: formData.topupRaw, topup_details: formData.topupDetails, ket: formData.ket,
       tk20: Number(formData.tk20) || 0, tk50: Number(formData.tk50) || 0,
       ntk20: Number(formData.ntk20) || 0, ntk50: Number(formData.ntk50) || 0,
-      jam_input: jamInput 
+      jam_input: jamInput,
+      sesi: selectedSesi
     };
 
     try {
-      if (editingId) {
-        await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'records', editingId), payload);
-        setEditingId(null);
-      } else {
-        payload.sesi = selectedSesi;
-        await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'records'), payload);
-      }
+      await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'records'), payload);
       setFormData(prev => ({ ...prev, nama: '', lokasi: '', topupDisplay: '', topupRaw: 0, topupDetails: [], tk20: '', tk50: '', ntk20: '', ntk50: '', ket: '' }));
       alert("✅ Data berhasil disimpan dengan aman!");
       
@@ -416,7 +479,6 @@ export default function App() {
     } catch (error) { alert("⚠️ GAGAL MENYIMPAN KE CLOUD!"); }
   };
 
-  // Logika Cerdas Handle Kursor Penyesuaian B.A.
   const handleBaNominalChange = (e) => {
     const input = e.target;
     const selectionStart = input.selectionStart;
@@ -443,10 +505,10 @@ export default function App() {
     setBaCursorPos(newCursorPos);
   };
 
+  // Simpan Otomatis Penyesuaian B.A.
   const handleBaNominalBlur = async () => {
     if (!user || !selectedRecordForPrint) return;
     try {
-      // Simpan senyap (auto-save) ke Firebase saat kursor keluar dari kolom input
       const valueToSave = customBaRaw === '' ? null : Number(customBaRaw);
       await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'records', selectedRecordForPrint.id), {
         custom_ba_nominal: valueToSave
@@ -582,25 +644,11 @@ export default function App() {
           <form onSubmit={handleLoginSubmit} className="space-y-5">
             <div>
               <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-widest mb-2">Username Akses</label>
-              <input 
-                type="text" 
-                value={loginData.username} 
-                onChange={(e) => setLoginData({...loginData, username: e.target.value})} 
-                className="w-full border border-slate-300 rounded-xl p-3.5 outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 font-semibold text-slate-800 transition-all bg-slate-50 focus:bg-white" 
-                placeholder="Ketik username Anda" 
-                required 
-              />
+              <input type="text" value={loginData.username} onChange={(e) => setLoginData({...loginData, username: e.target.value})} className="w-full border border-slate-300 rounded-xl p-3.5 outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 font-semibold text-slate-800 transition-all bg-slate-50 focus:bg-white" placeholder="Ketik username Anda" required />
             </div>
             <div>
               <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-widest mb-2">Kata Sandi</label>
-              <input 
-                type="password" 
-                value={loginData.password} 
-                onChange={(e) => setLoginData({...loginData, password: e.target.value})} 
-                className="w-full border border-slate-300 rounded-xl p-3.5 outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 font-semibold text-slate-800 transition-all bg-slate-50 focus:bg-white tracking-widest" 
-                placeholder="••••••••" 
-                required 
-              />
+              <input type="password" value={loginData.password} onChange={(e) => setLoginData({...loginData, password: e.target.value})} className="w-full border border-slate-300 rounded-xl p-3.5 outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 font-semibold text-slate-800 transition-all bg-slate-50 focus:bg-white tracking-widest" placeholder="••••••••" required />
             </div>
             <button type="submit" className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3.5 rounded-xl shadow-lg shadow-emerald-500/30 transition-all transform hover:-translate-y-0.5 mt-2 text-sm tracking-wide">
               Buka Kunci Sistem
@@ -690,6 +738,7 @@ export default function App() {
           
           {/* TAB: DATA MASTER */}
           {activeTab === 'master' && (
+             // ... Master data tetap sama seperti sebelumnya ...
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 max-w-7xl mx-auto">
               <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
                 <h3 className="font-bold text-base text-slate-800 mb-4 border-b border-slate-100 pb-3 flex items-center gap-2">
@@ -780,12 +829,12 @@ export default function App() {
           {activeTab === 'input' && (
             <div className="max-w-6xl mx-auto space-y-8">
               
-              {/* SECTION 1: FORM UTAMA */}
+              {/* SECTION 1: FORM UTAMA (HANYA UNTUK TAMBAH DATA BARU) */}
               <div ref={formRef} className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-                <div className="bg-slate-50 px-6 py-4 border-b border-slate-200">
+                <div className="bg-slate-50 px-6 py-4 border-b border-slate-200 flex justify-between items-center">
                   <h3 className="font-bold text-slate-800 flex items-center gap-2">
                     <svg className="w-5 h-5 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
-                    Formulir Setoran Jakcard & Topup
+                    Formulir Input Data Baru
                   </h3>
                 </div>
                 <div className="p-6 md:p-8">
@@ -850,7 +899,7 @@ export default function App() {
                       </div>
                     </div>
 
-                    {/* Baris 3: Topup & Ket (DENGAN KALKULATOR EDC) */}
+                    {/* Baris 3: Topup & Ket */}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                       <div className="space-y-3">
                         <div>
@@ -861,7 +910,7 @@ export default function App() {
                           </div>
                         </div>
 
-                        {/* Kalkulator EDC Mini */}
+                        {/* Kalkulator EDC */}
                         <div className="bg-emerald-50/60 p-4 rounded-xl border border-emerald-100">
                            <div className="flex justify-between items-center mb-2">
                              <span className="text-[10px] font-bold text-emerald-800 uppercase tracking-widest flex items-center gap-1.5"><svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z"></path></svg> Kalkulator Settlement EDC</span>
@@ -876,7 +925,6 @@ export default function App() {
                              <button type="button" onClick={handleAddEdc} className="bg-emerald-600 text-white px-4 py-2 rounded-lg text-xs font-bold hover:bg-emerald-700 transition shadow-sm">+ Tambah</button>
                            </div>
                            
-                           {/* List Rincian yang sudah ditambah */}
                            {formData.topupDetails && formData.topupDetails.length > 0 && (
                              <div className="mt-3 flex flex-wrap gap-2 pt-3 border-t border-emerald-200/60">
                                {formData.topupDetails.map((nominal, idx) => (
@@ -907,9 +955,8 @@ export default function App() {
                         </div>
                       </div>
                       <div className="flex gap-4 w-full sm:w-auto">
-                        {editingId && <button type="button" onClick={cancelEdit} className="flex-1 sm:flex-none bg-white border border-slate-300 text-slate-700 font-semibold py-3 px-8 rounded-xl hover:bg-slate-50 transition-all">Batal Edit</button>}
-                        <button type="submit" className={`flex-1 sm:flex-none ${editingId ? 'bg-blue-600 hover:bg-blue-700 shadow-blue-500/30' : 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-500/30'} text-white font-bold py-3 px-10 rounded-xl shadow-lg transition-all transform hover:-translate-y-0.5`}>
-                          {editingId ? 'Update Data Transaksi' : 'Simpan Transaksi Jakcard'}
+                        <button type="submit" className="flex-1 sm:flex-none w-full bg-emerald-600 hover:bg-emerald-700 shadow-emerald-500/30 text-white font-bold py-3 px-10 rounded-xl shadow-lg transition-all transform hover:-translate-y-0.5">
+                          Simpan Transaksi Jakcard
                         </button>
                       </div>
                     </div>
@@ -917,7 +964,7 @@ export default function App() {
                 </div>
               </div>
 
-              {/* SECTION 2: MONITOR TRANSAKSI */}
+              {/* SECTION 2: MONITOR TRANSAKSI (DENGAN INLINE EDITING) */}
               <div ref={monitorRef} className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
                 <div className="bg-slate-50 p-5 border-b border-slate-200 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                   <div>
@@ -942,90 +989,198 @@ export default function App() {
                   </div>
                 </div>
                 <div className="overflow-x-auto p-0">
-                  <table className="min-w-full text-sm text-left"><thead className="bg-slate-50/80 text-slate-600 font-bold uppercase tracking-wider text-[10px] border-b border-slate-200">
-                    <tr>
-                      <th className="p-4 cursor-pointer hover:bg-slate-200/50 transition-colors" rowSpan="2" onClick={() => setMonitorSortDir(prev => prev === 'asc' ? 'desc' : 'asc')}>
-                        Waktu {monitorSortDir === 'asc' ? '↑' : '↓'}
-                      </th>
-                      <th className="p-4" rowSpan="2">Petugas</th>
-                      <th className="p-4" rowSpan="2">Lokasi</th>
-                      <th className="p-4 text-right" rowSpan="2">Top Up (Rp)</th>
-                      <th className="p-2 text-center border-l border-slate-200" colSpan="2">Tunai (Pcs)</th>
-                      <th className="p-2 text-center border-l border-slate-200" colSpan="2">Non-Tunai (Pcs)</th>
-                      <th className="p-4 text-right border-l border-slate-200" rowSpan="2">Total (Rp)</th>
-                      <th className="p-4 text-center border-l border-slate-200" rowSpan="2">Aksi</th>
-                    </tr>
-                    <tr className="border-t border-slate-200">
-                      <th className="p-2 text-center border-l border-slate-200 text-[9px] text-blue-600">K.20</th>
-                      <th className="p-2 text-center text-[9px] text-blue-600">K.50</th>
-                      <th className="p-2 text-center border-l border-slate-200 text-[9px] text-orange-600">K.20</th>
-                      <th className="p-2 text-center text-[9px] text-orange-600">K.50</th>
-                    </tr>
+                  <table className="min-w-full text-sm text-left">
+                    <thead className="bg-slate-50/80 text-slate-600 font-bold uppercase tracking-wider text-[10px] border-b border-slate-200">
+                      <tr>
+                        <th className="p-4 cursor-pointer hover:bg-slate-200/50 transition-colors" rowSpan="2" onClick={() => setMonitorSortDir(prev => prev === 'asc' ? 'desc' : 'asc')}>
+                          Waktu {monitorSortDir === 'asc' ? '↑' : '↓'}
+                        </th>
+                        <th className="p-4" rowSpan="2">Petugas</th>
+                        <th className="p-4" rowSpan="2">Lokasi</th>
+                        <th className="p-4 text-right" rowSpan="2">Top Up (Rp)</th>
+                        <th className="p-2 text-center border-l border-slate-200" colSpan="2">Tunai (Pcs)</th>
+                        <th className="p-2 text-center border-l border-slate-200" colSpan="2">Non-Tunai (Pcs)</th>
+                        <th className="p-4 text-right border-l border-slate-200" rowSpan="2">Total (Rp)</th>
+                        <th className="p-4 text-center border-l border-slate-200" rowSpan="2">Aksi</th>
+                      </tr>
+                      <tr className="border-t border-slate-200">
+                        <th className="p-2 text-center border-l border-slate-200 text-[9px] text-blue-600">K.20</th>
+                        <th className="p-2 text-center text-[9px] text-blue-600">K.50</th>
+                        <th className="p-2 text-center border-l border-slate-200 text-[9px] text-orange-600">K.20</th>
+                        <th className="p-2 text-center text-[9px] text-orange-600">K.50</th>
+                      </tr>
                     </thead>
-                  <tbody className="divide-y divide-slate-100">{todaySesiRecords.map(r => (
-                    <tr key={r.id} className="hover:bg-slate-50 transition-colors">
-                      <td className="p-4 font-medium text-slate-500 text-xs whitespace-nowrap">{r.jam_input} WIB</td>
-                      <td className="p-4 font-semibold text-slate-800">
-                        <div className="flex items-center justify-between gap-2">
-                          <span>{r.nama}</span>
-                          <button onClick={() => {
-                            setSelectedRecordForPrint(r);
-                            const savedBa = r.custom_ba_nominal !== undefined && r.custom_ba_nominal !== null ? r.custom_ba_nominal : getRowTotal(r);
-                            setCustomBaRaw(savedBa);
-                            setCustomBaDisplay(formatRp(savedBa));
-                            setPrintSource('input'); // Tandai bahwa klik dari Monitor Input
-                            setActiveTab('print3');
-                            document.getElementById('main-scroll-container')?.scrollTo({ top: 0, behavior: 'smooth' });
-                          }} className="text-emerald-600 hover:text-emerald-800 bg-emerald-50 hover:bg-emerald-100 p-1.5 rounded transition-colors border border-emerald-100" title="Cetak Bukti Setor">
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"></path></svg>
-                          </button>
-                        </div>
-                      </td>
-                      <td className="p-4 text-slate-600">{r.lokasi}</td>
-                      <td className="p-4 text-right font-bold text-emerald-600">
-                         {formatRp(r.topup)}
-                         {r.topup_details && r.topup_details.length > 0 && (
-                            <div className="text-[9px] text-slate-400 font-semibold mt-1">({r.topup_details.length} struk)</div>
-                         )}
-                      </td>
-                      <td className="p-4 text-center border-l border-slate-100">
-                        <div className="font-bold text-blue-600 text-xs">{r.tk20 || 0}</div>
-                        {r.tk20 > 0 && <div className="text-[9px] text-slate-400 font-medium mt-0.5">Rp {formatRp(r.tk20 * HARGA_K20)}</div>}
-                      </td>
-                      <td className="p-4 text-center">
-                        <div className="font-bold text-blue-600 text-xs">{r.tk50 || 0}</div>
-                        {r.tk50 > 0 && <div className="text-[9px] text-slate-400 font-medium mt-0.5">Rp {formatRp(r.tk50 * HARGA_K50)}</div>}
-                      </td>
-                      <td className="p-4 text-center font-bold text-orange-600 text-xs border-l border-slate-100">{r.ntk20 || 0}</td>
-                      <td className="p-4 text-center font-bold text-orange-600 text-xs">{r.ntk50 || 0}</td>
-                      <td className="p-4 text-right font-black text-slate-800 border-l border-slate-100">{formatRp(getRowTotal(r))}</td>
-                      <td className="p-4 text-center border-l border-slate-100"><div className="flex justify-center gap-3"><button onClick={() => handleEdit(r)} className="text-blue-600 font-semibold hover:text-blue-800 transition-colors text-xs">Edit</button><button onClick={() => hapusData(r.id)} className="text-red-500 font-semibold hover:text-red-700 transition-colors text-xs">Hapus</button></div></td>
-                    </tr>
-                  ))}
-                  {todaySesiRecords.length > 0 && (
-                    <tr className="bg-slate-100/80 font-bold border-t-2 border-slate-200">
-                      <td colSpan="3" className="p-4 text-center sm:text-right uppercase text-slate-700 text-xs tracking-wider">Total Keseluruhan</td>
-                      <td className="p-4 text-right text-emerald-600">{formatRp(livePreviewSums.topup)}</td>
-                      <td className="p-4 text-center border-l border-slate-200">
-                        <div className="text-blue-700">{livePreviewSums.tk20}</div>
-                        {livePreviewSums.tk20 > 0 && <div className="text-[9px] text-slate-500 font-medium mt-0.5">Rp {formatRp(livePreviewSums.tk20 * HARGA_K20)}</div>}
-                      </td>
-                      <td className="p-4 text-center">
-                        <div className="text-blue-700">{livePreviewSums.tk50}</div>
-                        {livePreviewSums.tk50 > 0 && <div className="text-[9px] text-slate-500 font-medium mt-0.5">Rp {formatRp(livePreviewSums.tk50 * HARGA_K50)}</div>}
-                      </td>
-                      <td className="p-4 text-center text-orange-700 border-l border-slate-200">{livePreviewSums.ntk20}</td>
-                      <td className="p-4 text-center text-orange-700">{livePreviewSums.ntk50}</td>
-                      <td className="p-4 text-right text-slate-900 border-l border-slate-200">{formatRp(livePreviewSums.total)}</td>
-                      <td className="p-4 border-l border-slate-200"></td>
-                    </tr>
-                  )}
-                  {todaySesiRecords.length === 0 && <tr><td colSpan="10" className="p-12 text-center text-slate-400 font-medium italic">Belum ada input transaksi di tanggal {formatTanggalStandard(formData.tanggal)} untuk Sesi {selectedSesi}.</td></tr>}
-                  </tbody></table>
+                    <tbody className="divide-y divide-slate-100">
+                      {todaySesiRecords.map(r => {
+                        const isEditing = inlineEditId === r.id;
+                        return (
+                          <tr key={r.id} className={`${isEditing ? 'bg-emerald-50/50 ring-1 ring-emerald-200' : 'hover:bg-slate-50'} transition-colors`}>
+                            <td className="p-4 font-medium text-slate-500 text-xs whitespace-nowrap">{r.jam_input} WIB</td>
+                            
+                            {/* KOLOM PETUGAS */}
+                            <td className="p-4 font-semibold text-slate-800">
+                              {isEditing ? (
+                                <select name="nama" value={inlineForm.nama} onChange={handleInlineChange} className="w-full min-w-[120px] border border-emerald-400 rounded-md p-1.5 outline-none focus:ring-2 focus:ring-emerald-500 text-xs font-semibold bg-white text-slate-800">
+                                  <option value="">Pilih</option>{petugasList.map((p, i) => <option key={i} value={p}>{p}</option>)}
+                                </select>
+                              ) : (
+                                <div className="flex items-center justify-between gap-2">
+                                  <span title={r.ket ? `Keterangan: ${r.ket}` : ''}>{r.nama}</span>
+                                  <button onClick={() => {
+                                    setSelectedRecordForPrint(r);
+                                    const savedBa = r.custom_ba_nominal !== undefined && r.custom_ba_nominal !== null ? r.custom_ba_nominal : getRowTotal(r);
+                                    setCustomBaRaw(savedBa);
+                                    setCustomBaDisplay(formatRp(savedBa));
+                                    setPrintSource('input');
+                                    setActiveTab('print3');
+                                    document.getElementById('main-scroll-container')?.scrollTo({ top: 0, behavior: 'smooth' });
+                                  }} className="text-emerald-600 hover:text-emerald-800 bg-emerald-50 hover:bg-emerald-100 p-1.5 rounded transition-colors border border-emerald-100" title="Cetak Bukti Setor">
+                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"></path></svg>
+                                  </button>
+                                </div>
+                              )}
+                            </td>
+
+                            {/* KOLOM LOKASI */}
+                            <td className="p-4 text-slate-600">
+                              {isEditing ? (
+                                <select name="lokasi" value={inlineForm.lokasi} onChange={handleInlineChange} className="w-full min-w-[100px] border border-emerald-400 rounded-md p-1.5 outline-none focus:ring-2 focus:ring-emerald-500 text-xs font-semibold bg-white text-slate-800">
+                                  <option value="">Pilih</option>{lokasiList.map((l, i) => <option key={i} value={l}>{l}</option>)}
+                                </select>
+                              ) : (
+                                r.lokasi
+                              )}
+                            </td>
+
+                            {/* KOLOM TOP UP */}
+                            <td className="p-4 text-right font-bold text-emerald-600">
+                              {isEditing ? (
+                                <div className="flex flex-col gap-2 min-w-[180px]">
+                                  <input type="text" name="topupDisplay" value={inlineForm.topupDisplay} onChange={handleInlineChange} autoFocus className="w-full border border-emerald-400 rounded-md p-1.5 text-right outline-none focus:ring-2 focus:ring-emerald-500 text-xs font-bold text-emerald-700 bg-white" placeholder="0" />
+                                  <div className="bg-emerald-50/80 p-2 rounded-md border border-emerald-200 text-left">
+                                    <div className="text-[9px] font-bold text-emerald-800 mb-1 flex items-center justify-between">
+                                      <span>Struk EDC:</span>
+                                    </div>
+                                    <div className="flex gap-1 mb-1.5">
+                                      <input type="text" ref={inlineEdcInputRef} value={inlineTempEdc} onChange={e => {
+                                        const val = e.target.value.replace(/\D/g, '');
+                                        setInlineTempEdc(val ? formatRp(Number(val)) : '');
+                                      }} placeholder="+ Nominal" className="w-full border border-emerald-300 rounded p-1 text-[10px] outline-none focus:border-emerald-500 bg-white text-emerald-800 font-semibold" onKeyDown={e => { if(e.key === 'Enter') { e.preventDefault(); handleAddInlineEdc(); }}} />
+                                      <button type="button" onClick={handleAddInlineEdc} className="bg-emerald-600 text-white px-2 py-1 rounded text-[10px] font-bold hover:bg-emerald-700 transition-colors shadow-sm">+</button>
+                                    </div>
+                                    {inlineForm.topupDetails && inlineForm.topupDetails.length > 0 && (
+                                      <div className="flex flex-wrap gap-1 mt-1 pt-1.5 border-t border-emerald-200/60">
+                                        {inlineForm.topupDetails.map((nom, idx) => (
+                                          <div key={idx} className="bg-white border border-emerald-200 text-emerald-700 text-[9px] font-bold px-1.5 py-0.5 rounded flex items-center gap-1 shadow-sm">
+                                            {formatRp(nom)}
+                                            <button type="button" onClick={() => handleRemoveInlineEdc(idx)} className="text-red-400 hover:text-red-600 font-black">&times;</button>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                              ) : (
+                                <>
+                                  {formatRp(r.topup)}
+                                  {r.topup_details && r.topup_details.length > 0 && (
+                                     <div className="text-[9px] text-slate-400 font-semibold mt-1">({r.topup_details.length} struk)</div>
+                                  )}
+                                </>
+                              )}
+                            </td>
+
+                            {/* KOLOM TUNAI K20 */}
+                            <td className="p-4 text-center border-l border-slate-100">
+                              {isEditing ? (
+                                <input type="number" name="tk20" value={inlineForm.tk20} onChange={handleInlineChange} className="w-12 text-center border border-blue-400 rounded-md p-1.5 outline-none focus:ring-2 focus:ring-blue-500 text-xs font-bold text-blue-700 mx-auto block bg-white" />
+                              ) : (
+                                <>
+                                  <div className="font-bold text-blue-600 text-xs">{r.tk20 || 0}</div>
+                                  {r.tk20 > 0 && <div className="text-[9px] text-slate-400 font-medium mt-0.5">Rp {formatRp(r.tk20 * HARGA_K20)}</div>}
+                                </>
+                              )}
+                            </td>
+
+                            {/* KOLOM TUNAI K50 */}
+                            <td className="p-4 text-center">
+                              {isEditing ? (
+                                <input type="number" name="tk50" value={inlineForm.tk50} onChange={handleInlineChange} className="w-12 text-center border border-blue-400 rounded-md p-1.5 outline-none focus:ring-2 focus:ring-blue-500 text-xs font-bold text-blue-700 mx-auto block bg-white" />
+                              ) : (
+                                <>
+                                  <div className="font-bold text-blue-600 text-xs">{r.tk50 || 0}</div>
+                                  {r.tk50 > 0 && <div className="text-[9px] text-slate-400 font-medium mt-0.5">Rp {formatRp(r.tk50 * HARGA_K50)}</div>}
+                                </>
+                              )}
+                            </td>
+
+                            {/* KOLOM NON TUNAI K20 */}
+                            <td className="p-4 text-center border-l border-slate-100">
+                              {isEditing ? (
+                                <input type="number" name="ntk20" value={inlineForm.ntk20} onChange={handleInlineChange} className="w-12 text-center border border-orange-400 rounded-md p-1.5 outline-none focus:ring-2 focus:ring-orange-500 text-xs font-bold text-orange-700 mx-auto block bg-white" />
+                              ) : (
+                                <div className="font-bold text-orange-600 text-xs">{r.ntk20 || 0}</div>
+                              )}
+                            </td>
+
+                            {/* KOLOM NON TUNAI K50 */}
+                            <td className="p-4 text-center">
+                              {isEditing ? (
+                                <input type="number" name="ntk50" value={inlineForm.ntk50} onChange={handleInlineChange} className="w-12 text-center border border-orange-400 rounded-md p-1.5 outline-none focus:ring-2 focus:ring-orange-500 text-xs font-bold text-orange-700 mx-auto block bg-white" />
+                              ) : (
+                                <div className="font-bold text-orange-600 text-xs">{r.ntk50 || 0}</div>
+                              )}
+                            </td>
+
+                            {/* KOLOM TOTAL (TUNAI + TOPUP) */}
+                            <td className="p-4 text-right font-black text-slate-800 border-l border-slate-100">
+                              {isEditing 
+                                ? formatRp((Number(inlineForm.topupRaw)||0) + ((Number(inlineForm.tk20)||0)*HARGA_K20) + ((Number(inlineForm.tk50)||0)*HARGA_K50)) 
+                                : formatRp(getRowTotal(r))}
+                            </td>
+
+                            {/* KOLOM AKSI */}
+                            <td className="p-4 text-center border-l border-slate-100">
+                              {isEditing ? (
+                                <div className="flex flex-col gap-1.5 items-center justify-center">
+                                  <button onClick={saveInlineEdit} className="text-white bg-emerald-600 hover:bg-emerald-700 px-3 py-1.5 rounded-md text-[10px] font-bold shadow-sm transition-colors w-full">Simpan</button>
+                                  <button onClick={cancelInlineEdit} className="text-slate-600 hover:bg-slate-200 bg-slate-100 border border-slate-200 px-3 py-1.5 rounded-md text-[10px] font-bold transition-colors w-full">Batal</button>
+                                </div>
+                              ) : (
+                                <div className="flex justify-center gap-3">
+                                  <button onClick={() => startInlineEdit(r)} className="text-blue-600 font-semibold hover:text-blue-800 transition-colors text-xs">Edit</button>
+                                  <button onClick={() => hapusData(r.id)} className="text-red-500 font-semibold hover:text-red-700 transition-colors text-xs">Hapus</button>
+                                </div>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                      {todaySesiRecords.length > 0 && (
+                        <tr className="bg-slate-100/80 font-bold border-t-2 border-slate-200">
+                          <td colSpan="3" className="p-4 text-center sm:text-right uppercase text-slate-700 text-xs tracking-wider">Total Keseluruhan</td>
+                          <td className="p-4 text-right text-emerald-600">{formatRp(livePreviewSums.topup)}</td>
+                          <td className="p-4 text-center border-l border-slate-200">
+                            <div className="text-blue-700">{livePreviewSums.tk20}</div>
+                            {livePreviewSums.tk20 > 0 && <div className="text-[9px] text-slate-500 font-medium mt-0.5">Rp {formatRp(livePreviewSums.tk20 * HARGA_K20)}</div>}
+                          </td>
+                          <td className="p-4 text-center">
+                            <div className="text-blue-700">{livePreviewSums.tk50}</div>
+                            {livePreviewSums.tk50 > 0 && <div className="text-[9px] text-slate-500 font-medium mt-0.5">Rp {formatRp(livePreviewSums.tk50 * HARGA_K50)}</div>}
+                          </td>
+                          <td className="p-4 text-center text-orange-700 border-l border-slate-200">{livePreviewSums.ntk20}</td>
+                          <td className="p-4 text-center text-orange-700">{livePreviewSums.ntk50}</td>
+                          <td className="p-4 text-right text-slate-900 border-l border-slate-200">{formatRp(livePreviewSums.total)}</td>
+                          <td className="p-4 border-l border-slate-200"></td>
+                        </tr>
+                      )}
+                      {todaySesiRecords.length === 0 && <tr><td colSpan="10" className="p-12 text-center text-slate-400 font-medium italic">Belum ada input transaksi di tanggal {formatTanggalStandard(formData.tanggal)} untuk Sesi {selectedSesi}.</td></tr>}
+                    </tbody>
+                  </table>
                 </div>
               </div>
 
-              {/* SECTION 3: PENDAPATAN TAMBAHAN */}
+              {/* SECTION 3: PENDAPATAN TAMBAHAN (Tetap sama) */}
               <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
                 <div className="bg-indigo-50/50 p-5 border-b border-indigo-100">
                   <h3 className="font-bold text-indigo-900 text-base flex items-center gap-2">
@@ -1067,6 +1222,7 @@ export default function App() {
 
           {/* TAB: LAPORAN & DETAIL ANALITIK */}
           {activeTab === 'laporan' && (
+             // ... Bagian Laporan tetap persis seperti sebelumnya ...
             <div className="max-w-7xl mx-auto space-y-6">
               
               <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6">
@@ -1111,9 +1267,7 @@ export default function App() {
                 </div>
               </div>
 
-              {/* ========================================= */}
               {/* SUB-VIEW 1: LAPORAN GENERAL */}
-              {/* ========================================= */}
               {reportType === 'umum' && (
                 <>
                   <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden flex flex-col min-h-[300px]">
@@ -1154,9 +1308,7 @@ export default function App() {
                 </>
               )}
 
-              {/* ========================================= */}
               {/* SUB-VIEW 2: LAPORAN KHUSUS JAKCARD */}
-              {/* ========================================= */}
               {reportType === 'jakcard' && (
                 <div className="space-y-6">
                   <div className="bg-gradient-to-r from-emerald-600 to-teal-500 text-white p-8 rounded-3xl shadow-md flex flex-col md:flex-row justify-between items-center">
@@ -1200,9 +1352,7 @@ export default function App() {
                 </div>
               )}
 
-              {/* ========================================= */}
               {/* SUB-VIEW 3: LAPORAN KHUSUS E-CAR */}
-              {/* ========================================= */}
               {reportType === 'ecar' && (
                 <div className="space-y-6">
                   <div className="bg-slate-800 text-white p-8 rounded-3xl shadow-md flex flex-col md:flex-row justify-between items-center">
@@ -1234,9 +1384,7 @@ export default function App() {
                 </div>
               )}
 
-              {/* ========================================= */}
               {/* SUB-VIEW 4: LAPORAN KHUSUS FOTO SATWA */}
-              {/* ========================================= */}
               {reportType === 'foto' && (
                 <div className="space-y-6">
                   <div className="bg-slate-800 text-white p-8 rounded-3xl shadow-md flex flex-col md:flex-row justify-between items-center">
@@ -1319,10 +1467,9 @@ export default function App() {
             </div>
           </div>
 
-          {/* TAB: CETAK BUKTI SETOR (Print 3 - F4 Layout) */}
+          {/* TAB: CETAK BUKTI SETOR (Print 3) */}
           <div className={activeTab === 'print3' ? 'block' : 'hidden'}>
             
-            {/* Tampilan 1: Tabel Pemilihan Data */}
             {!selectedRecordForPrint && (
               <div className="max-w-6xl mx-auto space-y-6 print:hidden">
                 <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
@@ -1376,7 +1523,6 @@ export default function App() {
               </div>
             )}
 
-            {/* Tampilan 2: Layout F4 Print Ready */}
             {selectedRecordForPrint && (
               <div className="pb-10">
                 <div className="max-w-[215mm] mx-auto mb-6 print:hidden bg-white p-4 sm:px-6 rounded-xl border border-slate-200 shadow-sm flex flex-col md:flex-row justify-between items-center gap-4">
@@ -1399,10 +1545,8 @@ export default function App() {
                   </div>
                 </div>
 
-                {/* AREA KERTAS F4 */}
                 <div className="bg-white w-full sm:w-[215mm] min-h-[330mm] mx-auto p-6 sm:p-10 border border-slate-200 shadow-xl print:shadow-none print:border-none print:p-0 print:w-full font-sans text-slate-900 box-border relative">
                   
-                  {/* BAGIAN 1: BUKTI SETOR BANK */}
                   <div className="w-full">
                     <div className="border-2 border-black mb-4 py-2 px-4 bg-slate-100/50">
                       <h1 className="text-center font-bold text-lg uppercase tracking-wider">BUKTI SETOR BANK</h1>
@@ -1470,7 +1614,6 @@ export default function App() {
                             <div className="flex justify-between"><span>Rp.</span> <span></span></div>
                           </td>
                         </tr>
-                        {/* Tabel Bukti Setor tetap menggunakan kalkulasi sistem karena untuk keperluan Bank DKI agar sesuai hitungan */}
                         <tr>
                           <td colSpan="2" className="border border-black p-2 pl-4 border-l-2">Sub. Jumlah</td>
                           <td className="border border-black border-r-2 p-2">
@@ -1508,14 +1651,12 @@ export default function App() {
                     </div>
                   </div>
 
-                  {/* GARIS POTONG */}
                   <div className="w-full flex items-center justify-center my-8 print:my-10 opacity-60">
                      <div className="flex-1 border-t-2 border-dashed border-slate-500"></div>
                      <svg className="w-5 h-5 mx-2 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M14.121 14.121L19 19m-7-7l7-7m-7 7l-2.879 2.879M12 12L9.121 9.121m0 5.758a3 3 0 10-4.243 4.243 3 3 0 004.243-4.243zm0-5.758a3 3 0 10-4.243-4.243 3 3 0 004.243 4.243z"></path></svg>
                      <div className="flex-1 border-t-2 border-dashed border-slate-500"></div>
                   </div>
 
-                  {/* BAGIAN 2: BERITA ACARA */}
                   <div className="w-full border-2 border-black p-1 box-border">
                     <div className="w-full border border-black p-6 box-border min-h-[135mm] flex flex-col">
                       
@@ -1546,7 +1687,6 @@ export default function App() {
                         <div className="mt-8 flex flex-col gap-4">
                            <div className="flex items-center gap-4">
                               <span className="w-48">Telah menerima uang sejumlah Rp.</span>
-                              {/* Nominal disesuaikan berdasarkan input admin (customBaRaw), mandiri dari hitungan sistem */}
                               <div className="border-2 border-black bg-slate-50 px-4 py-2 w-64 text-base font-bold tracking-widest text-center box-border">
                                 {formatRp(customBaRaw || 0)}
                               </div>
@@ -1569,7 +1709,6 @@ export default function App() {
 
                       </div>
 
-                      {/* Tanda Tangan Berita Acara */}
                       <div className="mt-14 flex justify-between text-center text-[13px] font-semibold px-6 pb-2">
                         <div className="w-48 flex flex-col">
                            <div className="mb-20 leading-relaxed">Penerima<br/>Petugas Pemeriksa,</div>
@@ -1585,7 +1724,6 @@ export default function App() {
                   </div>
                 </div>
                 
-                {/* FORM PENYESUAIAN NOMINAL B.A DI BAWAH KERTAS */}
                 <div className="max-w-[215mm] mx-auto mt-6 print:hidden bg-blue-50/60 p-5 rounded-xl border border-blue-200 shadow-sm flex flex-col sm:flex-row justify-between items-center gap-4">
                   <div>
                     <h4 className="font-bold text-blue-900 text-sm">Penyesuaian Nominal Berita Acara</h4>
@@ -1601,7 +1739,6 @@ export default function App() {
             )}
           </div>
 
-          {/* Tombol Terapung (Floating Action Button) untuk kembali ke atas */}
           {activeTab === 'input' && showUpButton && (
             <button
               onClick={() => { document.getElementById('main-scroll-container')?.scrollTo({ top: 0, behavior: 'smooth' }); }}
