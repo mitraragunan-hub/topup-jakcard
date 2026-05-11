@@ -90,6 +90,8 @@ export default function App() {
   };
 
   const terbilang = (angka) => {
+    angka = Number(angka) || 0;
+    if (angka === 0) return 'Nol';
     angka = Math.abs(angka);
     const bilangan = ['','Satu','Dua','Tiga','Empat','Lima','Enam','Tujuh','Delapan','Sembilan','Sepuluh','Sebelas'];
     let result = '';
@@ -126,7 +128,7 @@ export default function App() {
   const [lokasiList, setLokasiList] = useState([]);
   const [penandatangan, setPenandatangan] = useState({ bendahara: '', pemeriksa: '' });
 
-  // State utama FormData, ditambah topupDetails untuk menyimpan rincian EDC
+  // State utama FormData
   const [formData, setFormData] = useState({
     tanggal: getTodayStr(),
     nama: '', lokasi: '', topupDisplay: '', topupRaw: 0, topupDetails: [], 
@@ -137,14 +139,15 @@ export default function App() {
   const getActiveSesi = () => new Date().getHours() >= 20 ? 'Malam' : 'Siang';
   const [selectedSesi, setSelectedSesi] = useState(getActiveSesi());
 
-  // Refs untuk fitur Auto-Scroll
+  // Refs untuk fitur Auto-Scroll & Input Kursor
   const formRef = useRef(null);
   const monitorRef = useRef(null);
   const edcInputRef = useRef(null);
+  const baInputRef = useRef(null);
 
   // State untuk tombol "Up" dan Sumber Print
   const [showUpButton, setShowUpButton] = useState(false);
-  const [printSource, setPrintSource] = useState(null); // 'input' atau 'print3'
+  const [printSource, setPrintSource] = useState(null);
 
   // State sementara untuk kalkulator EDC
   const [tempEdc, setTempEdc] = useState('');
@@ -160,10 +163,11 @@ export default function App() {
   const [sortConfig, setSortConfig] = useState({ key: 'tanggal', direction: 'desc' });
   const [monitorSortDir, setMonitorSortDir] = useState('desc');
   
-  // State khusus untuk cetak bukti setor
+  // State khusus untuk cetak bukti setor & kursor BA
   const [selectedRecordForPrint, setSelectedRecordForPrint] = useState(null);
   const [customBaRaw, setCustomBaRaw] = useState('');
   const [customBaDisplay, setCustomBaDisplay] = useState('');
+  const [baCursorPos, setBaCursorPos] = useState(null);
 
   const [records, setRecords] = useState([]);
   const [extraRecords, setExtraRecords] = useState([]);
@@ -251,21 +255,25 @@ export default function App() {
     return () => unsubExtraInput();
   }, [user, formData.tanggal, selectedSesi]);
 
+  // Hook untuk mempertahankan kursor input Berita Acara setelah render
+  useEffect(() => {
+    if (baCursorPos !== null && baInputRef.current) {
+      baInputRef.current.setSelectionRange(baCursorPos, baCursorPos);
+      setBaCursorPos(null);
+    }
+  }, [customBaDisplay, baCursorPos]);
+
   const HARGA_K20 = 45000;
   const HARGA_K50 = 75000;
   const formatRp = (angka) => new Intl.NumberFormat('id-ID').format(angka || 0);
   const getRowTotal = (row) => (row.topup || 0) + ((row.tk20 || 0) * HARGA_K20) + ((row.tk50 || 0) * HARGA_K50);
   
-  // Handler Scroll untuk mendeteksi visibilitas tombol UP
+  // Handler Scroll
   const handleScroll = (e) => {
-    if (e.target.scrollTop > 350) {
-      setShowUpButton(true);
-    } else {
-      setShowUpButton(false);
-    }
+    if (e.target.scrollTop > 350) setShowUpButton(true);
+    else setShowUpButton(false);
   };
 
-  // Handler Keamanan (Login Submit)
   const handleLoginSubmit = (e) => {
     e.preventDefault();
     if (loginData.username === 'admintmr' && loginData.password === 'tmr@1234') {
@@ -277,9 +285,7 @@ export default function App() {
     }
   };
 
-  const handleLogout = () => {
-    setShowLogoutModal(true);
-  };
+  const handleLogout = () => { setShowLogoutModal(true); };
 
   const executeLogout = () => {
     sessionStorage.removeItem('tmr_app_auth');
@@ -320,10 +326,7 @@ export default function App() {
     });
     setEditingId(record.id);
     setActiveTab('input');
-    // Scroll mulus ke form input teratas saat edit diklik
-    setTimeout(() => {
-      document.getElementById('main-scroll-container')?.scrollTo({ top: 0, behavior: 'smooth' });
-    }, 100);
+    setTimeout(() => { document.getElementById('main-scroll-container')?.scrollTo({ top: 0, behavior: 'smooth' }); }, 100);
   };
 
   const cancelEdit = () => {
@@ -331,7 +334,6 @@ export default function App() {
     setFormData(prev => ({ ...prev, nama: '', lokasi: '', topupDisplay: '', topupRaw: 0, topupDetails: [], tk20: '', tk50: '', ntk20: '', ntk50: '', ket: '' }));
   };
 
-  // FUNGSI UNTUK KALKULATOR MINI EDC
   const handleAddEdc = () => {
     const val = Number(tempEdc.replace(/\D/g, ''));
     if (val > 0) {
@@ -339,11 +341,7 @@ export default function App() {
       const newTotal = newDetails.reduce((a, b) => a + b, 0);
       setFormData(prev => ({ ...prev, topupDetails: newDetails, topupRaw: newTotal, topupDisplay: formatRp(newTotal) }));
       setTempEdc(''); 
-      
-      // Auto-focus kembali ke input EDC
-      setTimeout(() => {
-        if (edcInputRef.current) edcInputRef.current.focus();
-      }, 0);
+      setTimeout(() => { if (edcInputRef.current) edcInputRef.current.focus(); }, 0);
     }
   };
 
@@ -399,7 +397,7 @@ export default function App() {
       topup: formData.topupRaw, topup_details: formData.topupDetails, ket: formData.ket,
       tk20: Number(formData.tk20) || 0, tk50: Number(formData.tk50) || 0,
       ntk20: Number(formData.ntk20) || 0, ntk50: Number(formData.ntk50) || 0,
-      jam_input: jamInput // Selalu ter-update agar naik ke paling atas
+      jam_input: jamInput 
     };
 
     try {
@@ -413,17 +411,52 @@ export default function App() {
       setFormData(prev => ({ ...prev, nama: '', lokasi: '', topupDisplay: '', topupRaw: 0, topupDetails: [], tk20: '', tk50: '', ntk20: '', ntk50: '', ket: '' }));
       alert("✅ Data berhasil disimpan dengan aman!");
       
-      // Auto-Scroll ke tabel Monitor setelah input tersimpan
-      setTimeout(() => {
-        monitorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      }, 150);
+      setTimeout(() => { monitorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 150);
 
     } catch (error) { alert("⚠️ GAGAL MENYIMPAN KE CLOUD!"); }
   };
-  
-  const hapusData = (id) => { 
-    setDeleteInfo({ show: true, id });
+
+  // Logika Cerdas Handle Kursor Penyesuaian B.A.
+  const handleBaNominalChange = (e) => {
+    const input = e.target;
+    const selectionStart = input.selectionStart;
+    const previousValue = input.value;
+
+    const valueBeforeCursor = previousValue.substring(0, selectionStart);
+    const digitsBeforeCursor = (valueBeforeCursor.match(/\d/g) || []).length;
+
+    const rawValue = previousValue.replace(/\D/g, '');
+    const numVal = rawValue ? Number(rawValue) : '';
+    const formattedValue = rawValue ? formatRp(numVal) : '';
+
+    setCustomBaDisplay(formattedValue);
+    setCustomBaRaw(numVal);
+
+    let newCursorPos = 0;
+    let currentDigits = 0;
+    for (let i = 0; i < formattedValue.length; i++) {
+      if (currentDigits === digitsBeforeCursor) break;
+      if (/\d/.test(formattedValue[i])) currentDigits++;
+      newCursorPos++;
+    }
+
+    setBaCursorPos(newCursorPos);
   };
+
+  const handleBaNominalBlur = async () => {
+    if (!user || !selectedRecordForPrint) return;
+    try {
+      // Simpan senyap (auto-save) ke Firebase saat kursor keluar dari kolom input
+      const valueToSave = customBaRaw === '' ? null : Number(customBaRaw);
+      await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'records', selectedRecordForPrint.id), {
+        custom_ba_nominal: valueToSave
+      });
+    } catch (error) {
+      console.error("Gagal menyimpan penyesuaian nominal B.A:", error);
+    }
+  };
+  
+  const hapusData = (id) => { setDeleteInfo({ show: true, id }); };
 
   const executeDelete = async () => {
     if (!user || !deleteInfo.id) return;
@@ -526,7 +559,6 @@ export default function App() {
   if (!isAppAuthenticated) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-slate-50 font-sans p-4 relative overflow-hidden" style={{ fontFamily: "'Inter', sans-serif" }}>
-        {/* Dekorasi Background TMR */}
         <div className="absolute top-0 left-0 w-full h-64 bg-emerald-600 rounded-b-[50px] shadow-lg"></div>
         <div className="absolute top-10 left-10 w-32 h-32 bg-white opacity-10 rounded-full blur-2xl"></div>
         <div className="absolute top-20 right-20 w-48 h-48 bg-emerald-400 opacity-20 rounded-full blur-3xl"></div>
@@ -938,8 +970,9 @@ export default function App() {
                           <span>{r.nama}</span>
                           <button onClick={() => {
                             setSelectedRecordForPrint(r);
-                            setCustomBaRaw(getRowTotal(r));
-                            setCustomBaDisplay(formatRp(getRowTotal(r)));
+                            const savedBa = r.custom_ba_nominal !== undefined && r.custom_ba_nominal !== null ? r.custom_ba_nominal : getRowTotal(r);
+                            setCustomBaRaw(savedBa);
+                            setCustomBaDisplay(formatRp(savedBa));
                             setPrintSource('input'); // Tandai bahwa klik dari Monitor Input
                             setActiveTab('print3');
                             document.getElementById('main-scroll-container')?.scrollTo({ top: 0, behavior: 'smooth' });
@@ -1326,9 +1359,10 @@ export default function App() {
                           <td className="p-4 text-center">
                             <button onClick={() => { 
                               setSelectedRecordForPrint(r); 
-                              setCustomBaRaw(getRowTotal(r)); 
-                              setCustomBaDisplay(formatRp(getRowTotal(r)));
-                              setPrintSource('print3'); // Berasal dari dalam tabel menu cetak
+                              const savedBa = r.custom_ba_nominal !== undefined && r.custom_ba_nominal !== null ? r.custom_ba_nominal : getRowTotal(r);
+                              setCustomBaRaw(savedBa); 
+                              setCustomBaDisplay(formatRp(savedBa));
+                              setPrintSource('print3'); 
                             }} className="bg-emerald-100 hover:bg-emerald-600 hover:text-white text-emerald-700 font-bold py-1.5 px-4 rounded-lg transition-colors text-xs border border-emerald-200 shadow-sm">
                               Pilih & Cetak
                             </button>
@@ -1348,15 +1382,11 @@ export default function App() {
                 <div className="max-w-[215mm] mx-auto mb-6 print:hidden bg-white p-4 sm:px-6 rounded-xl border border-slate-200 shadow-sm flex flex-col md:flex-row justify-between items-center gap-4">
                   <button onClick={() => {
                     if (printSource === 'input') {
-                      // Jika masuk dari Monitor Input, kembalikan ke Monitor Input
                       setActiveTab('input');
                       setSelectedRecordForPrint(null);
                       setPrintSource(null);
-                      setTimeout(() => {
-                        monitorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                      }, 100);
+                      setTimeout(() => { monitorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 100);
                     } else {
-                      // Jika masuk dari Menu Cetak, kembalikan ke tabel Menu Cetak
                       setSelectedRecordForPrint(null);
                     }
                   }} className="text-slate-500 hover:text-slate-800 font-semibold text-sm flex items-center gap-2">
@@ -1440,6 +1470,7 @@ export default function App() {
                             <div className="flex justify-between"><span>Rp.</span> <span></span></div>
                           </td>
                         </tr>
+                        {/* Tabel Bukti Setor tetap menggunakan kalkulasi sistem karena untuk keperluan Bank DKI agar sesuai hitungan */}
                         <tr>
                           <td colSpan="2" className="border border-black p-2 pl-4 border-l-2">Sub. Jumlah</td>
                           <td className="border border-black border-r-2 p-2">
@@ -1515,14 +1546,15 @@ export default function App() {
                         <div className="mt-8 flex flex-col gap-4">
                            <div className="flex items-center gap-4">
                               <span className="w-48">Telah menerima uang sejumlah Rp.</span>
+                              {/* Nominal disesuaikan berdasarkan input admin (customBaRaw), mandiri dari hitungan sistem */}
                               <div className="border-2 border-black bg-slate-50 px-4 py-2 w-64 text-base font-bold tracking-widest text-center box-border">
-                                {formatRp(customBaRaw !== '' ? customBaRaw : getRowTotal(selectedRecordForPrint))}
+                                {formatRp(customBaRaw || 0)}
                               </div>
                            </div>
                            <div className="flex items-start gap-4">
                               <span className="w-48 pt-3">Terbilang</span>
                               <div className="border border-black bg-slate-50 px-4 py-3 flex-1 max-w-lg min-h-[60px] font-bold text-[13px] italic uppercase box-border flex items-center leading-relaxed">
-                                #{terbilang(customBaRaw !== '' ? customBaRaw : getRowTotal(selectedRecordForPrint))} RUPIAH#
+                                #{terbilang(customBaRaw || 0)} RUPIAH#
                               </div>
                            </div>
                         </div>
@@ -1557,15 +1589,11 @@ export default function App() {
                 <div className="max-w-[215mm] mx-auto mt-6 print:hidden bg-blue-50/60 p-5 rounded-xl border border-blue-200 shadow-sm flex flex-col sm:flex-row justify-between items-center gap-4">
                   <div>
                     <h4 className="font-bold text-blue-900 text-sm">Penyesuaian Nominal Berita Acara</h4>
-                    <p className="text-xs text-blue-700/80 mt-1 font-medium">Isi kolom ini <span className="font-bold">hanya jika</span> fisik uang yang disetorkan berbeda dengan nominal perhitungan sistem di atas.</p>
+                    <p className="text-xs text-blue-700/80 mt-1 font-medium">Ubah kolom ini <span className="font-bold">hanya jika</span> fisik uang disetor berbeda dengan hitungan mesin.</p>
                   </div>
                   <div className="relative w-full sm:w-auto">
                     <span className="absolute inset-y-0 left-0 pl-3 flex items-center text-slate-400 font-bold text-sm">Rp</span>
-                    <input type="text" value={customBaDisplay} onChange={(e) => {
-                      const val = e.target.value.replace(/\D/g, '');
-                      setCustomBaDisplay(val ? formatRp(Number(val)) : '');
-                      setCustomBaRaw(val ? Number(val) : '');
-                    }} className="w-full sm:w-64 border border-blue-300 rounded-lg pl-9 p-3 outline-none focus:ring-2 focus:ring-blue-500 font-bold text-blue-800 text-sm bg-white shadow-inner transition-all" title="Sesuaikan jika fisik uang berbeda" placeholder="Ketik nominal beda..." />
+                    <input type="text" ref={baInputRef} value={customBaDisplay} onChange={handleBaNominalChange} onBlur={handleBaNominalBlur} className="w-full sm:w-64 border border-blue-300 rounded-lg pl-9 p-3 outline-none focus:ring-2 focus:ring-blue-500 font-bold text-blue-800 text-sm bg-white shadow-inner transition-all" title="Sesuaikan jika fisik uang berbeda" placeholder="Otomatis Sesuai Sistem" />
                   </div>
                 </div>
 
@@ -1576,9 +1604,7 @@ export default function App() {
           {/* Tombol Terapung (Floating Action Button) untuk kembali ke atas */}
           {activeTab === 'input' && showUpButton && (
             <button
-              onClick={() => {
-                document.getElementById('main-scroll-container')?.scrollTo({ top: 0, behavior: 'smooth' });
-              }}
+              onClick={() => { document.getElementById('main-scroll-container')?.scrollTo({ top: 0, behavior: 'smooth' }); }}
               className="fixed bottom-8 right-8 bg-slate-800 hover:bg-slate-900 text-white p-3.5 rounded-full shadow-[0_4px_20px_rgba(0,0,0,0.2)] transition-all transform hover:-translate-y-1 z-50 print:hidden border border-slate-700 flex items-center justify-center group"
               title="Kembali ke form atas"
             >
