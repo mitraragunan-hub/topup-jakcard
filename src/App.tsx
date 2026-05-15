@@ -1,5 +1,5 @@
 // @ts-nocheck
-import React, { useState, useMemo, useEffect, useRef } from 'react';
+import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from 'firebase/auth';
 import { getFirestore, collection, doc, addDoc, updateDoc, deleteDoc, onSnapshot, setDoc } from 'firebase/firestore';
@@ -169,6 +169,50 @@ export default function App() {
   const [records, setRecords] = useState([]);
   const [extraRecords, setExtraRecords] = useState([]);
 
+  // ==========================================
+  // FITUR INACTIVITY TIMEOUT (5 MENIT)
+  // ==========================================
+  const INACTIVITY_TIMEOUT = 5 * 60 * 1000; // 5 menit dalam milidetik
+  const logoutTimerRef = useRef(null);
+
+  const executeLogout = useCallback(() => {
+    sessionStorage.removeItem('tmr_app_auth');
+    setIsAppAuthenticated(false);
+    setLoginData({ username: '', password: '' });
+    setShowLogoutModal(false);
+  }, []);
+
+  const resetInactivityTimer = useCallback(() => {
+    if (logoutTimerRef.current) clearTimeout(logoutTimerRef.current);
+    
+    if (isAppAuthenticated) {
+      logoutTimerRef.current = setTimeout(() => {
+        alert("Sesi Anda telah berakhir karena tidak ada aktivitas selama 5 menit. Silakan login kembali untuk keamanan.");
+        executeLogout();
+      }, INACTIVITY_TIMEOUT);
+    }
+  }, [isAppAuthenticated, executeLogout]);
+
+  useEffect(() => {
+    const events = ['mousemove', 'keydown', 'click', 'scroll', 'touchstart'];
+    
+    const handleUserActivity = () => {
+      resetInactivityTimer();
+    };
+
+    if (isAppAuthenticated) {
+      resetInactivityTimer(); // Mulai timer saat komponen dimuat & user authenticated
+      events.forEach(event => window.addEventListener(event, handleUserActivity));
+    }
+
+    return () => {
+      if (logoutTimerRef.current) clearTimeout(logoutTimerRef.current);
+      events.forEach(event => window.removeEventListener(event, handleUserActivity));
+    };
+  }, [isAppAuthenticated, resetInactivityTimer]);
+  // ==========================================
+
+
   useEffect(() => {
     const initAuth = async () => {
       if (!auth) { setIsLoadingDB(false); return; }
@@ -276,19 +320,13 @@ export default function App() {
       setIsAppAuthenticated(true);
       sessionStorage.setItem('tmr_app_auth', 'true');
       setLoginError('');
+      resetInactivityTimer(); // Mulai timer saat berhasil login
     } else {
       setLoginError('Username atau password tidak valid!');
     }
   };
 
   const handleLogout = () => { setShowLogoutModal(true); };
-
-  const executeLogout = () => {
-    sessionStorage.removeItem('tmr_app_auth');
-    setIsAppAuthenticated(false);
-    setLoginData({ username: '', password: '' });
-    setShowLogoutModal(false);
-  };
 
   const updateMasterDB = async (payload) => {
     if (!user) return;
@@ -314,7 +352,7 @@ export default function App() {
   const saveEditPetugas = (idx) => { const newList = [...petugasList]; newList[idx] = editPetugasValue; updateMasterDB({ petugas: newList }); setEditPetugasIdx(null); };
 
   // ==========================================
-  // INLINE EDITING LOGIC (MENGGANTIKAN FORM EDIT ATAS)
+  // INLINE EDITING LOGIC
   // ==========================================
   const startInlineEdit = (record) => {
     setInlineEditId(record.id);
@@ -452,7 +490,6 @@ export default function App() {
     }
   };
   
-  // Submit SEKARANG HANYA UNTUK TAMBAH DATA BARU (Add)
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!user) return;
@@ -505,7 +542,6 @@ export default function App() {
     setBaCursorPos(newCursorPos);
   };
 
-  // Simpan Otomatis Penyesuaian B.A.
   const handleBaNominalBlur = async () => {
     if (!user || !selectedRecordForPrint) return;
     try {
@@ -738,7 +774,6 @@ export default function App() {
           
           {/* TAB: DATA MASTER */}
           {activeTab === 'master' && (
-             // ... Master data tetap sama seperti sebelumnya ...
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 max-w-7xl mx-auto">
               <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
                 <h3 className="font-bold text-base text-slate-800 mb-4 border-b border-slate-100 pb-3 flex items-center gap-2">
@@ -829,7 +864,7 @@ export default function App() {
           {activeTab === 'input' && (
             <div className="max-w-6xl mx-auto space-y-8">
               
-              {/* SECTION 1: FORM UTAMA (HANYA UNTUK TAMBAH DATA BARU) */}
+              {/* SECTION 1: FORM UTAMA */}
               <div ref={formRef} className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
                 <div className="bg-slate-50 px-6 py-4 border-b border-slate-200 flex justify-between items-center">
                   <h3 className="font-bold text-slate-800 flex items-center gap-2">
@@ -918,8 +953,8 @@ export default function App() {
                            </div>
                            <div className="flex gap-2">
                              <input type="text" ref={edcInputRef} value={tempEdc} onChange={e => {
-                                const val = e.target.value.replace(/\D/g, '');
-                                setTempEdc(val ? formatRp(Number(val)) : '');
+                               const val = e.target.value.replace(/\D/g, '');
+                               setTempEdc(val ? formatRp(Number(val)) : '');
                              }} placeholder="Ketik nominal struk EDC..." className="flex-1 border border-emerald-200 rounded-lg p-2.5 outline-none focus:border-emerald-500 text-sm font-semibold bg-white" 
                              onKeyDown={(e) => { if(e.key === 'Enter') { e.preventDefault(); handleAddEdc(); } }} />
                              <button type="button" onClick={handleAddEdc} className="bg-emerald-600 text-white px-4 py-2 rounded-lg text-xs font-bold hover:bg-emerald-700 transition shadow-sm">+ Tambah</button>
@@ -1180,7 +1215,7 @@ export default function App() {
                 </div>
               </div>
 
-              {/* SECTION 3: PENDAPATAN TAMBAHAN (Tetap sama) */}
+              {/* SECTION 3: PENDAPATAN TAMBAHAN */}
               <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
                 <div className="bg-indigo-50/50 p-5 border-b border-indigo-100">
                   <h3 className="font-bold text-indigo-900 text-base flex items-center gap-2">
@@ -1222,7 +1257,6 @@ export default function App() {
 
           {/* TAB: LAPORAN & DETAIL ANALITIK */}
           {activeTab === 'laporan' && (
-             // ... Bagian Laporan tetap persis seperti sebelumnya ...
             <div className="max-w-7xl mx-auto space-y-6">
               
               <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6">
@@ -1679,7 +1713,8 @@ export default function App() {
                         <div className="mt-4">
                           <div className="mb-1">Yang Menerima</div>
                           <div className="grid grid-cols-[80px_10px_1fr] gap-y-1 pl-4">
-                            <div>Nama</div><div>:</div><div className="border-b border-black border-dotted w-64 pb-0.5">{penandatangan.pemeriksa}</div>
+                            {/* UPDATE: Dari penandatangan.pemeriksa menjadi penandatangan.bendahara */}
+                            <div>Nama</div><div>:</div><div className="border-b border-black border-dotted w-64 pb-0.5">{penandatangan.bendahara}</div>
                             <div>NIP</div><div>:</div><div className="border-b border-black border-dotted w-64 pb-0.5"></div>
                           </div>
                         </div>
@@ -1711,8 +1746,9 @@ export default function App() {
 
                       <div className="mt-14 flex justify-between text-center text-[13px] font-semibold px-6 pb-2">
                         <div className="w-48 flex flex-col">
-                           <div className="mb-20 leading-relaxed">Penerima<br/>Petugas Pemeriksa,</div>
-                           <div>( <span className="inline-block w-40 border-b border-black border-dotted pb-0.5 text-xs">{penandatangan.pemeriksa}</span> )</div>
+                           {/* UPDATE: Dari Petugas Pemeriksa menjadi Bendahara Penerima */}
+                           <div className="mb-20 leading-relaxed">Penerima<br/>Bendahara Penerima,</div>
+                           <div>( <span className="inline-block w-40 border-b border-black border-dotted pb-0.5 text-xs">{penandatangan.bendahara}</span> )</div>
                         </div>
                         <div className="w-48 flex flex-col">
                            <div className="mb-20 leading-relaxed">Penyetor<br/>Petugas Loket,</div>
