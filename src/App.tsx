@@ -153,7 +153,11 @@ export default function App() {
   const [printSource, setPrintSource] = useState(null);
 
   const [tempEdc, setTempEdc] = useState('');
-  const [extraInputData, setExtraInputData] = useState({ ecarDisplay: '', ecarRaw: 0, ecarTrx: 0, fotoDisplay: '', fotoRaw: 0, fotoTrx: 0 });
+  
+  // Update state untuk mendeteksi rincian Petugas Ecar
+  const [tempEcarPetugas, setTempEcarPetugas] = useState('');
+  const [tempEcarNominal, setTempEcarNominal] = useState('');
+  const [extraInputData, setExtraInputData] = useState({ ecarDisplay: '', ecarRaw: 0, ecarTrx: 0, ecarDetails: [], fotoDisplay: '', fotoRaw: 0, fotoTrx: 0 });
 
   const [filter, setFilter] = useState({ 
     startDate: getTodayStr(), endDate: getTodayStr(), sesi: '', lokasi: '', petugas: '' 
@@ -286,11 +290,12 @@ export default function App() {
         setExtraInputData({
           ecarRaw: data.ecarRaw || 0, ecarTrx: data.ecarTrx || 0,
           ecarDisplay: data.ecarRaw ? new Intl.NumberFormat('id-ID').format(data.ecarRaw) : '',
+          ecarDetails: data.ecarDetails || [],
           fotoRaw: data.fotoRaw || 0, fotoTrx: data.fotoTrx || 0,
           fotoDisplay: data.fotoRaw ? new Intl.NumberFormat('id-ID').format(data.fotoRaw) : ''
         });
       } else {
-        setExtraInputData({ ecarDisplay: '', ecarRaw: 0, ecarTrx: 0, fotoDisplay: '', fotoRaw: 0, fotoTrx: 0 });
+        setExtraInputData({ ecarDisplay: '', ecarRaw: 0, ecarTrx: 0, ecarDetails: [], fotoDisplay: '', fotoRaw: 0, fotoTrx: 0 });
       }
     });
     return () => unsubExtraInput();
@@ -456,6 +461,44 @@ export default function App() {
     setFormData(prev => ({ ...prev, topupDetails: newDetails, topupRaw: newTotal, topupDisplay: newTotal ? formatRp(newTotal) : '' }));
   };
 
+  // ==========================================
+  // FITUR BARU: MANAJEMEN PETUGAS E-CAR
+  // ==========================================
+  const handleAddEcarDetail = async () => {
+    if (!user) return;
+    const val = Number(tempEcarNominal.replace(/\D/g, ''));
+    if (val > 0 && tempEcarPetugas) {
+      const newDetails = [...(extraInputData.ecarDetails || []), { nama: tempEcarPetugas, nominal: val }];
+      const newTotal = newDetails.reduce((a, b) => a + b.nominal, 0);
+      const newTrx = newTotal / 250000;
+      
+      const docIdExtra = `${formData.tanggal}_${selectedSesi}`;
+      try {
+        await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'daily_extra', docIdExtra), {
+          ecarRaw: newTotal, ecarTrx: newTrx, ecarDetails: newDetails,
+          tanggal: formData.tanggal, sesi: selectedSesi
+        }, { merge: true });
+        setTempEcarPetugas('');
+        setTempEcarNominal('');
+      } catch(e) { console.error(e); }
+    }
+  };
+
+  const handleRemoveEcarDetail = async (idx) => {
+    if (!user) return;
+    const newDetails = (extraInputData.ecarDetails || []).filter((_, i) => i !== idx);
+    const newTotal = newDetails.reduce((a, b) => a + b.nominal, 0);
+    const newTrx = newTotal / 250000;
+    
+    const docIdExtra = `${formData.tanggal}_${selectedSesi}`;
+    try {
+      await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'daily_extra', docIdExtra), {
+        ecarRaw: newTotal, ecarTrx: newTrx, ecarDetails: newDetails,
+        tanggal: formData.tanggal, sesi: selectedSesi
+      }, { merge: true });
+    } catch(e) { console.error(e); }
+  };
+
   const handleExtraChange = async (e) => {
     if (!user) return;
     const { name, value } = e.target;
@@ -466,14 +509,19 @@ export default function App() {
       const trxKey = name.replace('Display', 'Trx');
       const trxValue = name === 'ecarDisplay' ? (rawNumber / 250000) : (rawNumber / 5000);
       
-      const docIdExtra = `${formData.tanggal}_${selectedSesi}`;
+      const payload = {
+        [rawKey]: rawNumber, [trxKey]: trxValue,
+        tanggal: formData.tanggal,
+        sesi: selectedSesi
+      };
 
+      if (name === 'ecarDisplay') {
+         payload.ecarDetails = (extraInputData.ecarDetails?.length > 0) ? [] : extraInputData.ecarDetails;
+      }
+
+      const docIdExtra = `${formData.tanggal}_${selectedSesi}`;
       try {
-        await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'daily_extra', docIdExtra), {
-          [rawKey]: rawNumber, [trxKey]: trxValue,
-          tanggal: formData.tanggal,
-          sesi: selectedSesi
-        }, { merge: true });
+        await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'daily_extra', docIdExtra), payload, { merge: true });
       } catch (error) { console.error("Gagal simpan Ecar/Foto:", error); }
     }
   };
@@ -864,7 +912,7 @@ export default function App() {
           {activeTab === 'input' && (
             <div className="max-w-6xl mx-auto space-y-8">
               
-              {/* SECTION 1: FORM UTAMA */}
+              {/* SECTION 1: FORM UTAMA (HANYA UNTUK TAMBAH DATA BARU) */}
               <div ref={formRef} className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
                 <div className="bg-slate-50 px-6 py-4 border-b border-slate-200 flex justify-between items-center">
                   <h3 className="font-bold text-slate-800 flex items-center gap-2">
@@ -1236,6 +1284,37 @@ export default function App() {
                         <div className="w-full border border-slate-200 rounded-xl p-3 bg-slate-100 text-center font-bold text-indigo-600">{extraInputData.ecarTrx || 0}</div>
                       </div>
                     </div>
+                    {/* Tambahan Fitur Petugas E-Car */}
+                    <div className="mt-4 bg-indigo-50/50 p-3 rounded-xl border border-indigo-100">
+                       <div className="text-[10px] font-bold text-indigo-800 uppercase tracking-widest mb-2 flex justify-between items-center">
+                          <span>Rincian Petugas E-Car</span>
+                          <span className="text-[8px] bg-indigo-200 px-1.5 py-0.5 rounded text-indigo-700">Opsional</span>
+                       </div>
+                       <div className="flex gap-2 mb-2">
+                          <select value={tempEcarPetugas} onChange={e => setTempEcarPetugas(e.target.value)} className="w-1/2 border border-indigo-200 rounded-lg p-2 outline-none focus:border-indigo-500 text-xs font-semibold bg-white text-slate-700">
+                             <option value="">Pilih Petugas</option>
+                             {petugasList.map((p, i) => <option key={i} value={p}>{p}</option>)}
+                          </select>
+                          <input type="text" value={tempEcarNominal} onChange={e => {
+                             const val = e.target.value.replace(/\D/g, '');
+                             setTempEcarNominal(val ? formatRp(Number(val)) : '');
+                          }} placeholder="Rp Nominal" className="flex-1 border border-indigo-200 rounded-lg p-2 outline-none focus:border-indigo-500 text-xs font-semibold bg-white" />
+                          <button type="button" onClick={handleAddEcarDetail} className="bg-indigo-600 text-white px-3 py-1.5 rounded-lg text-xs font-bold hover:bg-indigo-700 shadow-sm">+</button>
+                       </div>
+                       {extraInputData.ecarDetails && extraInputData.ecarDetails.length > 0 && (
+                          <div className="flex flex-col gap-1.5 mt-2 pt-2 border-t border-indigo-200/60">
+                             {extraInputData.ecarDetails.map((det, idx) => (
+                                <div key={idx} className="bg-white border border-indigo-200 text-indigo-700 text-[10px] font-bold px-2 py-1.5 rounded-lg flex items-center justify-between shadow-sm">
+                                   <span>{det.nama}</span>
+                                   <div className="flex items-center gap-3">
+                                      <span>Rp {formatRp(det.nominal)}</span>
+                                      <button type="button" onClick={() => handleRemoveEcarDetail(idx)} className="text-red-400 hover:text-red-600 font-black text-sm">&times;</button>
+                                   </div>
+                                </div>
+                             ))}
+                          </div>
+                       )}
+                    </div>
                   </div>
                   <div className="group relative">
                     <h4 className="font-bold text-slate-800 mb-3 text-sm">Pendapatan Foto Satwa</h4>
@@ -1406,7 +1485,14 @@ export default function App() {
                     </tr></thead>
                     <tbody className="divide-y divide-slate-100">{filteredExtraRecords.map(r => (r.ecarRaw > 0 || r.ecarTrx > 0) && (
                       <tr key={r.id} className="hover:bg-slate-50 transition-colors">
-                        <td className="p-5 font-semibold text-slate-700">{formatTanggalStandard(r.tanggal || r.id.split('_')[0])}</td>
+                        <td className="p-5 font-semibold text-slate-700">
+                          {formatTanggalStandard(r.tanggal || r.id.split('_')[0])}
+                          {r.ecarDetails && r.ecarDetails.length > 0 && (
+                            <div className="text-[10px] font-normal text-slate-400 mt-1">
+                              {r.ecarDetails.map(d => `${d.nama} (${formatRp(d.nominal)})`).join(', ')}
+                            </div>
+                          )}
+                        </td>
                         <td className="p-5 text-center font-bold text-emerald-600 text-[10px] uppercase">{r.sesi || 'Siang'}</td>
                         <td className="p-5 text-center font-bold text-slate-600">{r.ecarTrx} <span className="text-xs font-normal text-slate-400 ml-1">Trx</span></td>
                         <td className="p-5 text-right font-black text-slate-800">Rp {formatRp(r.ecarRaw)}</td>
@@ -1604,10 +1690,10 @@ export default function App() {
                         <tr>
                           <td className="border border-black p-2 text-center border-l-2">1</td>
                           <td className="border border-black p-2">
-                            <div className="flex justify-between">
+                            <div className="grid grid-cols-[140px_50px_1fr] items-center">
                                <span>Penjualan Saldo 20.000 =</span>
-                               <span className="font-normal">x 45 ribu</span>
-                               <span className="w-10 text-center font-bold">{selectedRecordForPrint.tk20 || 0}</span>
+                               <span className="text-center font-bold">{selectedRecordForPrint.tk20 || 0}</span>
+                               <span className="text-center font-normal">x 45 ribu</span>
                             </div>
                           </td>
                           <td className="border border-black border-r-2 p-2">
@@ -1617,10 +1703,10 @@ export default function App() {
                         <tr>
                           <td className="border border-black p-2 text-center border-l-2">2</td>
                           <td className="border border-black p-2">
-                            <div className="flex justify-between">
+                            <div className="grid grid-cols-[140px_50px_1fr] items-center">
                                <span>Penjualan Saldo 50.000 =</span>
-                               <span className="font-normal">x 75 ribu</span>
-                               <span className="w-10 text-center font-bold">{selectedRecordForPrint.tk50 || 0}</span>
+                               <span className="text-center font-bold">{selectedRecordForPrint.tk50 || 0}</span>
+                               <span className="text-center font-normal">x 75 ribu</span>
                             </div>
                           </td>
                           <td className="border border-black border-r-2 p-2">
@@ -1713,7 +1799,6 @@ export default function App() {
                         <div className="mt-4">
                           <div className="mb-1">Yang Menerima</div>
                           <div className="grid grid-cols-[80px_10px_1fr] gap-y-1 pl-4">
-                            {/* UPDATE: Dari penandatangan.pemeriksa menjadi penandatangan.bendahara */}
                             <div>Nama</div><div>:</div><div className="border-b border-black border-dotted w-64 pb-0.5">{penandatangan.bendahara}</div>
                             <div>NIP</div><div>:</div><div className="border-b border-black border-dotted w-64 pb-0.5"></div>
                           </div>
@@ -1746,7 +1831,6 @@ export default function App() {
 
                       <div className="mt-14 flex justify-between text-center text-[13px] font-semibold px-6 pb-2">
                         <div className="w-48 flex flex-col">
-                           {/* UPDATE: Dari Petugas Pemeriksa menjadi Bendahara Penerima */}
                            <div className="mb-20 leading-relaxed">Penerima<br/>Bendahara Penerima,</div>
                            <div>( <span className="inline-block w-40 border-b border-black border-dotted pb-0.5 text-xs">{penandatangan.bendahara}</span> )</div>
                         </div>
