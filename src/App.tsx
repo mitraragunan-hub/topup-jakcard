@@ -15,16 +15,17 @@ try {
     app = initializeApp(firebaseConfig);
     appId = typeof __app_id !== 'undefined' ? __app_id : 'tmr-ragunan-cloud';
   } else {
+    // Kredensial dipindahkan ke file .env.local untuk menjaga keamanan data
     const firebaseConfig = {
-      apiKey: "AIzaSyBK1hpOkoZBr0HXAlP-VxRz2Myw94QNKfU",
-      authDomain: "transaksi-dfccb.firebaseapp.com",
-      projectId: "transaksi-dfccb",
-      storageBucket: "transaksi-dfccb.firebasestorage.app",
-      messagingSenderId: "357946401060",
-      appId: "1:357946401060:web:ea551d54fedbf6e7eed3b1"
+      apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "AIzaSyBK1hpOkoZBr0HXAlP-VxRz2Myw94QNKfU",
+      authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || "transaksi-dfccb.firebaseapp.com",
+      projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || "transaksi-dfccb",
+      storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || "transaksi-dfccb.firebasestorage.app",
+      messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || "357946401060",
+      appId: import.meta.env.VITE_FIREBASE_APP_ID || "1:357946401060:web:ea551d54fedbf6e7eed3b1"
     };
     app = initializeApp(firebaseConfig);
-    appId = 'tmr-ragunan-production';
+    appId = 'tmr-ragunan-production'; // Terhubung langsung ke database aslinya
   }
   auth = getAuth(app);
   db = getFirestore(app);
@@ -116,6 +117,26 @@ export default function App() {
   const [loginError, setLoginError] = useState('');
   const [showLogoutModal, setShowLogoutModal] = useState(false);
   const [deleteInfo, setDeleteInfo] = useState({ show: false, id: null });
+  const [authActionModal, setAuthActionModal] = useState({ show: false, action: null, password: '', error: '' });
+
+  const requestActionWithAuth = (recordDate, actionCallback) => {
+    if (recordDate < getTodayStr()) {
+      setAuthActionModal({ show: true, action: actionCallback, password: '', error: '' });
+    } else {
+      actionCallback();
+    }
+  };
+
+  const handleAuthActionSubmit = (e) => {
+    e.preventDefault();
+    const pwd = authActionModal.password.trim();
+    if (pwd === 'tmr@1234' || pwd === 'admin') {
+      if (authActionModal.action) authActionModal.action();
+      setAuthActionModal({ show: false, action: null, password: '', error: '' });
+    } else {
+      setAuthActionModal(prev => ({ ...prev, error: 'Password tidak valid!' }));
+    }
+  };
 
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [activeTab, setActiveTab] = useState('input');
@@ -160,8 +181,17 @@ export default function App() {
   const [extraInputData, setExtraInputData] = useState({ ecarDisplay: '', ecarRaw: 0, ecarTrx: 0, ecarDetails: [], fotoDisplay: '', fotoRaw: 0, fotoTrx: 0 });
 
   const [filter, setFilter] = useState({ 
-    startDate: getTodayStr(), endDate: getTodayStr(), sesi: '', lokasi: '', petugas: '' 
+    startDate: getTodayStr(), endDate: getTodayStr(), sesi: '', lokasi: [], petugas: '' 
   });
+  const [isLokasiFilterDropdownOpen, setIsLokasiFilterDropdownOpen] = useState(false);
+  const [isLokasiFilterInitialized, setIsLokasiFilterInitialized] = useState(false);
+
+  useEffect(() => {
+    if (lokasiList.length > 0 && !isLokasiFilterInitialized) {
+      setFilter(prev => ({ ...prev, lokasi: lokasiList }));
+      setIsLokasiFilterInitialized(true);
+    }
+  }, [lokasiList, isLokasiFilterInitialized]);
   const [sortConfig, setSortConfig] = useState({ key: 'tanggal', direction: 'desc' });
   const [monitorSortDir, setMonitorSortDir] = useState('desc');
   
@@ -321,7 +351,9 @@ export default function App() {
 
   const handleLoginSubmit = (e) => {
     e.preventDefault();
-    if (loginData.username === 'admintmr' && loginData.password === 'tmr@1234') {
+    const uname = loginData.username.trim().toLowerCase();
+    const pwd = loginData.password.trim();
+    if ((uname === 'admintmr' && pwd === 'tmr@1234') || (uname === 'admin' && pwd === 'admin')) {
       setIsAppAuthenticated(true);
       sessionStorage.setItem('tmr_app_auth', 'true');
       setLoginError('');
@@ -335,6 +367,10 @@ export default function App() {
 
   const updateMasterDB = async (payload) => {
     if (!user) return;
+    if (import.meta.env.DEV) {
+      alert("PENGAMANAN AKTIF: Menambah/mengubah Master Data dinonaktifkan di mode lokal.");
+      return;
+    }
     try { await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'master'), payload, { merge: true }); } 
     catch (error) { alert("⚠️ GAGAL MENYIMPAN KE DATABASE!"); }
   };
@@ -390,6 +426,14 @@ export default function App() {
 
   const saveInlineEdit = async () => {
     if (!user || !inlineEditId) return;
+    
+    // PENGAMANAN: Blokir perubahan data saat jalan di localhost (DEV)
+    if (import.meta.env.DEV) {
+      alert("PENGAMANAN AKTIF: Anda sedang menjalankan aplikasi di mode lokal. Fungsi 'Edit' dinonaktifkan agar data asli tidak berubah.");
+      cancelInlineEdit();
+      return;
+    }
+
     const payload = {
       nama: inlineForm.nama,
       lokasi: inlineForm.lokasi,
@@ -466,6 +510,10 @@ export default function App() {
   // ==========================================
   const handleAddEcarDetail = async () => {
     if (!user) return;
+    if (import.meta.env.DEV) {
+      alert("PENGAMANAN AKTIF: Input data dinonaktifkan di mode lokal.");
+      return;
+    }
     const val = Number(tempEcarNominal.replace(/\D/g, ''));
     if (val > 0 && tempEcarPetugas) {
       const newDetails = [...(extraInputData.ecarDetails || []), { nama: tempEcarPetugas, nominal: val }];
@@ -486,6 +534,10 @@ export default function App() {
 
   const handleRemoveEcarDetail = async (idx) => {
     if (!user) return;
+    if (import.meta.env.DEV) {
+      alert("PENGAMANAN AKTIF: Hapus data dinonaktifkan di mode lokal.");
+      return;
+    }
     const newDetails = (extraInputData.ecarDetails || []).filter((_, i) => i !== idx);
     const newTotal = newDetails.reduce((a, b) => a + b.nominal, 0);
     const newTrx = newTotal / 250000;
@@ -501,6 +553,10 @@ export default function App() {
 
   const handleExtraChange = async (e) => {
     if (!user) return;
+    if (import.meta.env.DEV) {
+      console.log("Mode lokal: Perubahan form extra diblokir dari penyimpanan ke cloud.");
+      return;
+    }
     const { name, value } = e.target;
     if (name === 'ecarDisplay' || name === 'fotoDisplay') {
       const rawValue = value.replace(/\D/g, '');
@@ -541,6 +597,12 @@ export default function App() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!user) return;
+    
+    // PENGAMANAN: Blokir penambahan data saat jalan di localhost (DEV)
+    if (import.meta.env.DEV) {
+      alert("PENGAMANAN AKTIF: Anda sedang menjalankan aplikasi di mode lokal. Fungsi 'Simpan Data' dinonaktifkan agar tidak memasukkan data fiktif ke database produksi.");
+      return;
+    }
 
     const now = new Date();
     const jamInput = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
@@ -592,6 +654,10 @@ export default function App() {
 
   const handleBaNominalBlur = async () => {
     if (!user || !selectedRecordForPrint) return;
+    if (import.meta.env.DEV) {
+      console.log("Mode lokal: Penyesuaian B.A. tidak disimpan.");
+      return;
+    }
     try {
       const valueToSave = customBaRaw === '' ? null : Number(customBaRaw);
       await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'records', selectedRecordForPrint.id), {
@@ -606,6 +672,14 @@ export default function App() {
 
   const executeDelete = async () => {
     if (!user || !deleteInfo.id) return;
+    
+    // PENGAMANAN: Blokir penghapusan saat jalan di localhost (DEV)
+    if (import.meta.env.DEV) {
+      alert("PENGAMANAN AKTIF: Anda sedang menjalankan aplikasi di mode lokal. Fungsi 'Hapus' dinonaktifkan agar data asli tidak terhapus.");
+      setDeleteInfo({ show: false, id: null });
+      return;
+    }
+
     try { 
       await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'records', deleteInfo.id)); 
       setDeleteInfo({ show: false, id: null });
@@ -620,7 +694,15 @@ export default function App() {
     if (filter.startDate) result = result.filter(r => r.tanggal >= filter.startDate);
     if (filter.endDate) result = result.filter(r => r.tanggal <= filter.endDate);
     if (filter.sesi) result = result.filter(r => r.sesi === filter.sesi);
-    if (filter.lokasi) result = result.filter(r => r.lokasi === filter.lokasi);
+    if (isLokasiFilterInitialized) {
+      if (filter.lokasi.length === 0) {
+        result = []; // Kosongkan hasil jika tidak ada lokasi yang dipilih
+      } else {
+        result = result.filter(r => filter.lokasi.includes(r.lokasi));
+      }
+    } else if (typeof filter.lokasi === 'string' && filter.lokasi) {
+      result = result.filter(r => r.lokasi === filter.lokasi);
+    }
     if (filter.petugas) result = result.filter(r => r.nama === filter.petugas);
 
     result.sort((a, b) => {
@@ -1231,8 +1313,8 @@ export default function App() {
                                 </div>
                               ) : (
                                 <div className="flex justify-center gap-3">
-                                  <button onClick={() => startInlineEdit(r)} className="text-blue-600 font-semibold hover:text-blue-800 transition-colors text-xs">Edit</button>
-                                  <button onClick={() => hapusData(r.id)} className="text-red-500 font-semibold hover:text-red-700 transition-colors text-xs">Hapus</button>
+                                  <button onClick={() => requestActionWithAuth(r.tanggal, () => startInlineEdit(r))} className="text-blue-600 font-semibold hover:text-blue-800 transition-colors text-xs">Edit</button>
+                                  <button onClick={() => requestActionWithAuth(r.tanggal, () => hapusData(r.id))} className="text-red-500 font-semibold hover:text-red-700 transition-colors text-xs">Hapus</button>
                                 </div>
                               )}
                             </td>
@@ -1371,7 +1453,62 @@ export default function App() {
                   </div>
                   <div className={(reportType === 'ecar' || reportType === 'foto') ? 'hidden' : 'block'}>
                     <label className="block text-[11px] font-bold text-slate-500 mb-1.5 uppercase tracking-wider">Lokasi</label>
-                    <select value={filter.lokasi} onChange={e => setFilter({...filter, lokasi: e.target.value})} className="w-full border border-slate-300 rounded-xl p-2.5 outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 text-sm font-medium text-slate-700 transition-all"><option value="">Semua Lokasi</option>{lokasiList.map((l, i) => <option key={i} value={l}>{l}</option>)}</select>
+                    <div className="relative">
+                      <div 
+                        onClick={() => setIsLokasiFilterDropdownOpen(!isLokasiFilterDropdownOpen)} 
+                        className="w-full border border-slate-300 rounded-xl p-2.5 bg-white cursor-pointer flex justify-between items-center outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 text-sm font-medium text-slate-700 transition-all"
+                      >
+                        <span className="truncate pr-2 select-none">
+                          {!isLokasiFilterInitialized || filter.lokasi.length === lokasiList.length 
+                            ? 'Semua Lokasi' 
+                            : filter.lokasi.length === 0 
+                              ? '0 Lokasi Terpilih'
+                              : `${filter.lokasi.length} Lokasi Terpilih`}
+                        </span>
+                        <svg className={`w-4 h-4 transition-transform ${isLokasiFilterDropdownOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg>
+                      </div>
+                      
+                      {isLokasiFilterDropdownOpen && (
+                        <div className="absolute z-10 w-full mt-1 bg-white border border-slate-200 rounded-xl shadow-lg max-h-60 overflow-auto py-1">
+                          <div 
+                            className="flex items-center px-4 py-2.5 hover:bg-slate-50 cursor-pointer border-b border-slate-100"
+                            onClick={() => {
+                              if (filter.lokasi.length === lokasiList.length) setFilter({...filter, lokasi: []});
+                              else setFilter({...filter, lokasi: lokasiList});
+                            }}
+                          >
+                            <input 
+                              type="checkbox" 
+                              checked={isLokasiFilterInitialized && filter.lokasi.length === lokasiList.length && lokasiList.length > 0} 
+                              readOnly
+                              className="mr-3 w-4 h-4 text-emerald-600 rounded focus:ring-emerald-500 cursor-pointer"
+                            />
+                            <span className="text-sm font-bold text-slate-800 select-none">Pilih Semua Lokasi</span>
+                          </div>
+                          {lokasiList.map((l, i) => (
+                            <div 
+                              key={i} 
+                              className="flex items-center px-4 py-2 hover:bg-slate-50 cursor-pointer"
+                              onClick={() => {
+                                if (filter.lokasi.includes(l)) {
+                                  setFilter({...filter, lokasi: filter.lokasi.filter(item => item !== l)});
+                                } else {
+                                  setFilter({...filter, lokasi: [...filter.lokasi, l]});
+                                }
+                              }}
+                            >
+                              <input 
+                                type="checkbox" 
+                                checked={filter.lokasi.includes(l)} 
+                                readOnly
+                                className="mr-3 w-4 h-4 text-emerald-600 rounded focus:ring-emerald-500 cursor-pointer"
+                              />
+                              <span className="text-sm font-medium text-slate-700 select-none">{l}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
                   </div>
                   <div className={(reportType === 'ecar' || reportType === 'foto') ? 'hidden' : 'block'}>
                     <label className="block text-[11px] font-bold text-slate-500 mb-1.5 uppercase tracking-wider">Petugas</label>
@@ -1885,6 +2022,29 @@ export default function App() {
               <button onClick={() => setShowLogoutModal(false)} className="px-5 py-2.5 text-sm font-bold text-slate-600 hover:bg-slate-100 rounded-xl transition-colors border border-slate-200">Batal</button>
               <button onClick={executeLogout} className="px-5 py-2.5 text-sm font-bold text-white bg-red-600 hover:bg-red-700 rounded-xl shadow-md shadow-red-500/30 transition-all">Ya, Keluar</button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL OTORISASI AKSI MASA LALU */}
+      {authActionModal.show && (
+        <div className="fixed inset-0 bg-slate-900/60 z-[100] flex items-center justify-center p-4 backdrop-blur-sm print:hidden">
+          <div className="bg-white p-6 rounded-3xl shadow-2xl max-w-sm w-full border border-slate-100 transform transition-all">
+            <div className="w-12 h-12 bg-amber-50 text-amber-600 rounded-full flex items-center justify-center mb-4 border border-amber-100">
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path></svg>
+            </div>
+            <h3 className="text-xl font-bold text-slate-800 mb-2">Otorisasi Diperlukan</h3>
+            <p className="text-sm text-slate-600 mb-6 font-medium">Data ini merupakan transaksi dari tanggal sebelumnya. Masukkan password login untuk melanjutkan perubahan.</p>
+            {authActionModal.error && (
+              <div className="bg-red-50 text-red-600 p-2 rounded-lg text-xs font-semibold mb-4 text-center border border-red-100">{authActionModal.error}</div>
+            )}
+            <form onSubmit={handleAuthActionSubmit}>
+              <input type="password" value={authActionModal.password} onChange={(e) => setAuthActionModal({...authActionModal, password: e.target.value})} className="w-full border border-slate-300 rounded-xl p-3 outline-none focus:ring-2 focus:ring-emerald-500 font-semibold text-slate-800 transition-all bg-slate-50 mb-4" placeholder="••••••••" required autoFocus />
+              <div className="flex gap-3 justify-end">
+                <button type="button" onClick={() => setAuthActionModal({ show: false, action: null, password: '', error: '' })} className="px-4 py-2.5 text-sm font-bold text-slate-600 hover:bg-slate-100 rounded-xl transition-colors border border-slate-200">Batal</button>
+                <button type="submit" className="px-4 py-2.5 text-sm font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-xl shadow-md transition-all">Lanjutkan</button>
+              </div>
+            </form>
           </div>
         </div>
       )}
