@@ -1772,6 +1772,9 @@ export default function App() {
                             {Array.from({length: daysInMonth}, (_, i) => {
                               const day = String(i + 1).padStart(2, '0');
                               const dateStr = `${stockOpnameYear}-${stockOpnameMonth}-${day}`;
+                              const dateObj = new Date(Number(stockOpnameYear), Number(stockOpnameMonth) - 1, i + 1);
+                              const dayNames = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
+                              const dayName = dayNames[dateObj.getDay()];
                               
                               const dayRecords = records.filter(r => r.tanggal === dateStr);
                               const dayRecordsSiang = dayRecords.filter(r => (r.sesi || 'Siang') === 'Siang');
@@ -1805,44 +1808,47 @@ export default function App() {
                               return (
                                 <tr key={i} className="hover:bg-slate-50">
                                   <td className="border border-slate-300 p-2">{i + 1}</td>
-                                  <td className="border border-slate-300 p-2 whitespace-nowrap text-left pl-3 font-semibold">{`${day}/${stockOpnameMonth}/${stockOpnameYear}`}</td>
+                                  <td className="border border-slate-300 p-2 whitespace-nowrap text-left pl-3">
+                                    <div className="font-semibold text-slate-800">{`${day}/${stockOpnameMonth}/${stockOpnameYear}`}</div>
+                                    <div className="text-[10px] text-slate-500 font-medium mt-0.5">{dayName}</div>
+                                  </td>
                                   
                                   <td className="border border-slate-300 p-2 bg-emerald-50/50 text-emerald-700">
                                     <div className="flex flex-col items-center">
                                       <span className="font-bold text-sm">{sold20 || '-'}</span>
-                                      {sold20 > 0 && <div className="flex gap-2.5 text-[10px] mt-0.5 font-semibold"><span className="text-sky-600">S:{sold20S}</span><span className="text-purple-600">M:{sold20M}</span></div>}
+                                      {sold20 > 0 && <div className="flex gap-2 text-[9px] mt-1.5 font-bold tracking-wide"><span className="text-sky-700 bg-sky-100/70 border border-sky-200 px-1.5 py-0.5 rounded shadow-sm">S: {sold20S}</span><span className="text-purple-700 bg-purple-100/70 border border-purple-200 px-1.5 py-0.5 rounded shadow-sm">M: {sold20M}</span></div>}
                                     </div>
                                   </td>
                                   <td className="border border-slate-300 p-2 bg-emerald-50/50 text-emerald-700">
                                     <div className="flex flex-col items-center">
                                       <span className="font-bold text-sm">{sold50 || '-'}</span>
-                                      {sold50 > 0 && <div className="flex gap-2.5 text-[10px] mt-0.5 font-semibold"><span className="text-sky-600">S:{sold50S}</span><span className="text-purple-600">M:{sold50M}</span></div>}
+                                      {sold50 > 0 && <div className="flex gap-2 text-[9px] mt-1.5 font-bold tracking-wide"><span className="text-sky-700 bg-sky-100/70 border border-sky-200 px-1.5 py-0.5 rounded shadow-sm">S: {sold50S}</span><span className="text-purple-700 bg-purple-100/70 border border-purple-200 px-1.5 py-0.5 rounded shadow-sm">M: {sold50M}</span></div>}
                                     </div>
                                   </td>
                                   
                                   <td className="border border-slate-300 p-2 bg-orange-50/50 text-orange-700">
                                     <div className="flex flex-col items-center">
                                       <span className="font-bold text-sm">{ntk20 || '-'}</span>
-                                      {ntk20 > 0 && <div className="flex gap-2.5 text-[10px] mt-0.5 font-semibold"><span className="text-sky-600">S:{ntk20S}</span><span className="text-purple-600">M:{ntk20M}</span></div>}
+                                      {ntk20 > 0 && <div className="flex gap-2 text-[9px] mt-1.5 font-bold tracking-wide"><span className="text-sky-700 bg-sky-100/70 border border-sky-200 px-1.5 py-0.5 rounded shadow-sm">S: {ntk20S}</span><span className="text-purple-700 bg-purple-100/70 border border-purple-200 px-1.5 py-0.5 rounded shadow-sm">M: {ntk20M}</span></div>}
                                     </div>
                                   </td>
                                   <td className="border border-slate-300 p-2 bg-orange-50/50 text-orange-700">
                                     <div className="flex flex-col items-center">
                                       <span className="font-bold text-sm">{ntk50 || '-'}</span>
-                                      {ntk50 > 0 && <div className="flex gap-2.5 text-[10px] mt-0.5 font-semibold"><span className="text-sky-600">S:{ntk50S}</span><span className="text-purple-600">M:{ntk50M}</span></div>}
+                                      {ntk50 > 0 && <div className="flex gap-2 text-[9px] mt-1.5 font-bold tracking-wide"><span className="text-sky-700 bg-sky-100/70 border border-sky-200 px-1.5 py-0.5 rounded shadow-sm">S: {ntk50S}</span><span className="text-purple-700 bg-purple-100/70 border border-purple-200 px-1.5 py-0.5 rounded shadow-sm">M: {ntk50M}</span></div>}
                                     </div>
                                   </td>
                                   
                                   <td className="border border-slate-300 p-2 bg-blue-50/50 text-blue-700">
                                     <div className="flex flex-col items-center">
                                       <span className="font-bold text-sm">{tk20 || '-'}</span>
-                                      {tk20 > 0 && <div className="flex gap-2.5 text-[10px] mt-0.5 font-semibold"><span className="text-sky-600">S:{tk20S}</span><span className="text-purple-600">M:{tk20M}</span></div>}
+                                      {tk20 > 0 && <div className="flex gap-2 text-[9px] mt-1.5 font-bold tracking-wide"><span className="text-sky-700 bg-sky-100/70 border border-sky-200 px-1.5 py-0.5 rounded shadow-sm">S: {tk20S}</span><span className="text-purple-700 bg-purple-100/70 border border-purple-200 px-1.5 py-0.5 rounded shadow-sm">M: {tk20M}</span></div>}
                                     </div>
                                   </td>
                                   <td className="border border-slate-300 p-2 bg-blue-50/50 text-blue-700">
                                     <div className="flex flex-col items-center">
                                       <span className="font-bold text-sm">{tk50 || '-'}</span>
-                                      {tk50 > 0 && <div className="flex gap-2.5 text-[10px] mt-0.5 font-semibold"><span className="text-sky-600">S:{tk50S}</span><span className="text-purple-600">M:{tk50M}</span></div>}
+                                      {tk50 > 0 && <div className="flex gap-2 text-[9px] mt-1.5 font-bold tracking-wide"><span className="text-sky-700 bg-sky-100/70 border border-sky-200 px-1.5 py-0.5 rounded shadow-sm">S: {tk50S}</span><span className="text-purple-700 bg-purple-100/70 border border-purple-200 px-1.5 py-0.5 rounded shadow-sm">M: {tk50M}</span></div>}
                                     </div>
                                   </td>
                                 </tr>
