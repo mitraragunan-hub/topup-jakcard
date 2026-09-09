@@ -142,6 +142,12 @@ export default function App() {
   const [activeTab, setActiveTab] = useState('input');
   const [reportType, setReportType] = useState('umum'); 
   
+  const [stockOpnameData, setStockOpnameData] = useState({ stokAwal20: 0, stokAwal50: 0, penambahan: {} });
+  const [stockOpnameView, setStockOpnameView] = useState('bulanan');
+  const d = new Date();
+  const [stockOpnameMonth, setStockOpnameMonth] = useState(String(d.getMonth() + 1).padStart(2, '0'));
+  const [stockOpnameYear, setStockOpnameYear] = useState(String(d.getFullYear()));
+
   const [user, setUser] = useState(null);
   const [isLoadingDB, setIsLoadingDB] = useState(true);
 
@@ -330,6 +336,46 @@ export default function App() {
     });
     return () => unsubExtraInput();
   }, [user, formData.tanggal, selectedSesi]);
+
+  useEffect(() => {
+    if (!user || !db) return;
+    const docId = `${stockOpnameYear}-${stockOpnameMonth}`;
+    const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'stock_opname', docId);
+    
+    const unsub = onSnapshot(docRef, (docSnap) => {
+      if (docSnap.exists()) {
+        setStockOpnameData(docSnap.data());
+      } else {
+        setStockOpnameData({ stokAwal20: 0, stokAwal50: 0, penambahan: {} });
+      }
+    });
+    return () => unsub();
+  }, [user, db, appId, stockOpnameYear, stockOpnameMonth]);
+
+  const handleSaveStockOpname = async (field, value, date = null) => {
+    if (!user) return;
+    if (import.meta.env.DEV) {
+      console.log("Mode lokal: Perubahan Stock Opname diblokir.");
+      return;
+    }
+    const docId = `${stockOpnameYear}-${stockOpnameMonth}`;
+    const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'stock_opname', docId);
+    try {
+      const payload = {};
+      if (date) {
+        const currentData = { ...stockOpnameData };
+        if (!currentData.penambahan) currentData.penambahan = {};
+        if (!currentData.penambahan[date]) currentData.penambahan[date] = { p20: 0, p50: 0 };
+        currentData.penambahan[date][field] = Number(value) || 0;
+        payload.penambahan = currentData.penambahan;
+      } else {
+        payload[field] = Number(value) || 0;
+      }
+      await setDoc(docRef, payload, { merge: true });
+    } catch (e) {
+      console.error("Gagal simpan Stock Opname:", e);
+    }
+  };
 
   // Hook untuk kursor input B.A
   useEffect(() => {
@@ -1432,6 +1478,7 @@ export default function App() {
                   <button onClick={() => setReportType('jakcard')} className={`px-5 py-2 rounded-lg font-bold text-xs uppercase tracking-wide transition-all flex-1 lg:flex-none text-center ${reportType === 'jakcard' ? 'bg-white text-emerald-600 shadow-sm border-slate-200' : 'text-slate-500 hover:text-slate-800'}`}>Jakcard</button>
                   <button onClick={() => setReportType('ecar')} className={`px-5 py-2 rounded-lg font-bold text-xs uppercase tracking-wide transition-all flex-1 lg:flex-none text-center ${reportType === 'ecar' ? 'bg-white text-emerald-600 shadow-sm border-slate-200' : 'text-slate-500 hover:text-slate-800'}`}>E-Car</button>
                   <button onClick={() => setReportType('foto')} className={`px-5 py-2 rounded-lg font-bold text-xs uppercase tracking-wide transition-all flex-1 lg:flex-none text-center ${reportType === 'foto' ? 'bg-white text-emerald-600 shadow-sm border-slate-200' : 'text-slate-500 hover:text-slate-800'}`}>Foto Satwa</button>
+                  <button onClick={() => setReportType('stock_opname')} className={`px-5 py-2 rounded-lg font-bold text-xs uppercase tracking-wide transition-all flex-1 lg:flex-none text-center ${reportType === 'stock_opname' ? 'bg-white text-emerald-600 shadow-sm border-slate-200' : 'text-slate-500 hover:text-slate-800'}`}>Stock Opname</button>
                 </div>
               </div>
               
@@ -1669,6 +1716,222 @@ export default function App() {
                     ))}
                     {filteredExtraRecords.filter(r => r.fotoRaw > 0 || r.fotoTrx > 0).length === 0 && <tr><td colSpan="4" className="p-16 text-center text-slate-400 font-medium italic">Tidak ada catatan transaksi Foto Satwa pada periode yang dipilih.</td></tr>}
                     </tbody></table>
+                  </div>
+                </div>
+              )}
+
+              {/* SUB-VIEW 5: LAPORAN STOCK OPNAME JAKCARD */}
+              {reportType === 'stock_opname' && (
+                <div className="space-y-6">
+                  <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col sm:flex-row justify-between items-center gap-4">
+                    <div className="flex bg-slate-100 rounded-lg p-1 border border-slate-200">
+                      <button onClick={() => setStockOpnameView('bulanan')} className={`px-4 py-1.5 rounded text-sm font-bold transition-colors ${stockOpnameView === 'bulanan' ? 'bg-white shadow text-emerald-600' : 'text-slate-500 hover:text-slate-700'}`}>Bulanan</button>
+                      <button onClick={() => setStockOpnameView('tahunan')} className={`px-4 py-1.5 rounded text-sm font-bold transition-colors ${stockOpnameView === 'tahunan' ? 'bg-white shadow text-emerald-600' : 'text-slate-500 hover:text-slate-700'}`}>Tahunan</button>
+                    </div>
+                    
+                    <div className="flex items-center gap-3">
+                      {stockOpnameView === 'bulanan' && (
+                        <select value={stockOpnameMonth} onChange={e => setStockOpnameMonth(e.target.value)} className="border border-slate-300 rounded-lg px-3 py-1.5 outline-none focus:ring-2 focus:ring-emerald-500 text-sm font-bold text-slate-700">
+                          <option value="01">Januari</option><option value="02">Februari</option><option value="03">Maret</option><option value="04">April</option>
+                          <option value="05">Mei</option><option value="06">Juni</option><option value="07">Juli</option><option value="08">Agustus</option>
+                          <option value="09">September</option><option value="10">Oktober</option><option value="11">November</option><option value="12">Desember</option>
+                        </select>
+                      )}
+                      <select value={stockOpnameYear} onChange={e => setStockOpnameYear(e.target.value)} className="border border-slate-300 rounded-lg px-3 py-1.5 outline-none focus:ring-2 focus:ring-emerald-500 text-sm font-bold text-slate-700">
+                        {Array.from({length: 5}, (_, i) => new Date().getFullYear() - 2 + i).map(y => (
+                          <option key={y} value={y}>{y}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden custom-scrollbar overflow-x-auto">
+                    {stockOpnameView === 'bulanan' && (() => {
+                      const daysInMonth = new Date(Number(stockOpnameYear), Number(stockOpnameMonth), 0).getDate();
+                      
+                      let currentStock20 = Number(stockOpnameData?.stokAwal20 || 0);
+                      let currentStock50 = Number(stockOpnameData?.stokAwal50 || 0);
+                      
+                      let totalPenambahan20 = 0, totalPenambahan50 = 0;
+                      let totalTerjual20 = 0, totalTerjual50 = 0;
+                      let totalNtk20 = 0, totalNtk50 = 0, totalTk20 = 0, totalTk50 = 0;
+
+                      return (
+                        <table className="min-w-full text-xs text-center border-collapse">
+                          <thead className="bg-slate-100 text-slate-700 font-bold border-b-2 border-slate-300 text-[10px]">
+                            <tr>
+                              <th className="border border-slate-300 p-2" rowSpan="2">NO</th>
+                              <th className="border border-slate-300 p-2" rowSpan="2">TANGGAL</th>
+                              <th className="border border-slate-300 p-2 bg-slate-200/50" colSpan="2">STOK AWAL/PCS</th>
+                              <th className="border border-slate-300 p-2 bg-slate-200/50" colSpan="2">PENAMBAHAN</th>
+                              <th className="border border-slate-300 p-2 bg-slate-200/50" colSpan="2">JUMLAH STOK/PCS</th>
+                              <th className="border border-slate-300 p-2 bg-emerald-100/50" colSpan="2">TOTAL TERJUAL/PCS</th>
+                              <th className="border border-slate-300 p-2 bg-orange-100/50" colSpan="2">TERJUAL NON TUNAI/PCS</th>
+                              <th className="border border-slate-300 p-2 bg-blue-100/50" colSpan="2">TERJUAL TUNAI/PCS</th>
+                            </tr>
+                            <tr>
+                              <th className="border border-slate-300 p-1 bg-slate-200/30">SAL. 20</th><th className="border border-slate-300 p-1 bg-slate-200/30">SAL. 50</th>
+                              <th className="border border-slate-300 p-1 bg-slate-200/30">SAL. 20</th><th className="border border-slate-300 p-1 bg-slate-200/30">SAL. 50</th>
+                              <th className="border border-slate-300 p-1 bg-slate-200/30">SAL. 20</th><th className="border border-slate-300 p-1 bg-slate-200/30">SAL. 50</th>
+                              <th className="border border-slate-300 p-1 bg-emerald-100/30">SAL. 20</th><th className="border border-slate-300 p-1 bg-emerald-100/30">SAL. 50</th>
+                              <th className="border border-slate-300 p-1 bg-orange-100/30">SAL. 20</th><th className="border border-slate-300 p-1 bg-orange-100/30">SAL. 50</th>
+                              <th className="border border-slate-300 p-1 bg-blue-100/30">SAL. 20</th><th className="border border-slate-300 p-1 bg-blue-100/30">SAL. 50</th>
+                            </tr>
+                          </thead>
+                          <tbody className="font-medium">
+                            <tr className="bg-slate-50 font-bold hover:bg-slate-100">
+                              <td className="border border-slate-300 p-2">1</td>
+                              <td className="border border-slate-300 p-2 text-left">Stok Awal</td>
+                              <td className="border border-slate-300 p-1 bg-slate-200/20"><input type="number" value={stockOpnameData.stokAwal20 || ''} onChange={e => handleSaveStockOpname('stokAwal20', e.target.value)} className="w-12 text-center bg-transparent outline-none border-b border-slate-400 focus:border-emerald-500" placeholder="0" /></td>
+                              <td className="border border-slate-300 p-1 bg-slate-200/20"><input type="number" value={stockOpnameData.stokAwal50 || ''} onChange={e => handleSaveStockOpname('stokAwal50', e.target.value)} className="w-12 text-center bg-transparent outline-none border-b border-slate-400 focus:border-emerald-500" placeholder="0" /></td>
+                              <td className="border border-slate-300 p-2 bg-slate-200/20" colSpan="10"></td>
+                            </tr>
+                            {Array.from({length: daysInMonth}, (_, i) => {
+                              const day = String(i + 1).padStart(2, '0');
+                              const dateStr = `${stockOpnameYear}-${stockOpnameMonth}-${day}`;
+                              
+                              const dayRecords = records.filter(r => r.tanggal === dateStr);
+                              const ntk20 = dayRecords.reduce((sum, r) => sum + (Number(r.ntk20) || 0), 0);
+                              const ntk50 = dayRecords.reduce((sum, r) => sum + (Number(r.ntk50) || 0), 0);
+                              const tk20 = dayRecords.reduce((sum, r) => sum + (Number(r.tk20) || 0), 0);
+                              const tk50 = dayRecords.reduce((sum, r) => sum + (Number(r.tk50) || 0), 0);
+                              const sold20 = ntk20 + tk20;
+                              const sold50 = ntk50 + tk50;
+
+                              const penambahan = stockOpnameData.penambahan?.[dateStr] || { p20: 0, p50: 0 };
+                              const p20 = Number(penambahan.p20) || 0;
+                              const p50 = Number(penambahan.p50) || 0;
+
+                              const start20 = currentStock20;
+                              const start50 = currentStock50;
+
+                              const jml20 = start20 + p20;
+                              const jml50 = start50 + p50;
+
+                              currentStock20 = jml20 - sold20;
+                              currentStock50 = jml50 - sold50;
+
+                              totalPenambahan20 += p20; totalPenambahan50 += p50;
+                              totalTerjual20 += sold20; totalTerjual50 += sold50;
+                              totalNtk20 += ntk20; totalNtk50 += ntk50;
+                              totalTk20 += tk20; totalTk50 += tk50;
+
+                              return (
+                                <tr key={i} className="hover:bg-slate-50">
+                                  <td className="border border-slate-300 p-1">{i + 2}</td>
+                                  <td className="border border-slate-300 p-1 whitespace-nowrap text-left pl-2 font-semibold">{`${day}/${stockOpnameMonth}/${stockOpnameYear}`}</td>
+                                  
+                                  <td className="border border-slate-300 p-1 bg-slate-100/50 font-bold">{formatRp(start20)}</td>
+                                  <td className="border border-slate-300 p-1 bg-slate-100/50 font-bold">{formatRp(start50)}</td>
+                                  
+                                  <td className="border border-slate-300 p-1 bg-slate-50"><input type="number" value={p20 || ''} onChange={e => handleSaveStockOpname('p20', e.target.value, dateStr)} className="w-10 text-center bg-transparent outline-none border-b border-dashed border-slate-400 focus:border-emerald-500 hover:bg-slate-100" placeholder="-" /></td>
+                                  <td className="border border-slate-300 p-1 bg-slate-50"><input type="number" value={p50 || ''} onChange={e => handleSaveStockOpname('p50', e.target.value, dateStr)} className="w-10 text-center bg-transparent outline-none border-b border-dashed border-slate-400 focus:border-emerald-500 hover:bg-slate-100" placeholder="-" /></td>
+                                  
+                                  <td className="border border-slate-300 p-1 bg-slate-100/50 font-bold">{formatRp(jml20)}</td>
+                                  <td className="border border-slate-300 p-1 bg-slate-100/50 font-bold">{formatRp(jml50)}</td>
+                                  
+                                  <td className="border border-slate-300 p-1 bg-emerald-50/50 text-emerald-700 font-bold">{sold20 || '-'}</td>
+                                  <td className="border border-slate-300 p-1 bg-emerald-50/50 text-emerald-700 font-bold">{sold50 || '-'}</td>
+                                  
+                                  <td className="border border-slate-300 p-1 bg-orange-50/50 text-orange-700">{ntk20 || '-'}</td>
+                                  <td className="border border-slate-300 p-1 bg-orange-50/50 text-orange-700">{ntk50 || '-'}</td>
+                                  
+                                  <td className="border border-slate-300 p-1 bg-blue-50/50 text-blue-700">{tk20 || '-'}</td>
+                                  <td className="border border-slate-300 p-1 bg-blue-50/50 text-blue-700">{tk50 || '-'}</td>
+                                </tr>
+                              );
+                            })}
+                            <tr className="bg-amber-100/40 font-bold text-slate-800 border-t-2 border-slate-300">
+                              <td className="border border-slate-300 p-2 text-right uppercase" colSpan="2">Jumlah Kartu</td>
+                              <td className="border border-slate-300 p-2 bg-amber-200/50 text-right uppercase" colSpan="2">Penambahan</td>
+                              <td className="border border-slate-300 p-2 bg-amber-200/50 text-center text-amber-800">{formatRp(totalPenambahan20)}</td>
+                              <td className="border border-slate-300 p-2 bg-amber-200/50 text-center text-amber-800">{formatRp(totalPenambahan50)}</td>
+                              
+                              <td className="border border-slate-300 p-2 bg-teal-100/50 text-right uppercase" colSpan="2">Terjual</td>
+                              <td className="border border-slate-300 p-2 bg-emerald-200/50 text-emerald-800">{formatRp(totalTerjual20)}</td>
+                              <td className="border border-slate-300 p-2 bg-emerald-200/50 text-emerald-800">{formatRp(totalTerjual50)}</td>
+                              
+                              <td className="border border-slate-300 p-2 bg-orange-200/50 text-orange-800">{formatRp(totalNtk20)}</td>
+                              <td className="border border-slate-300 p-2 bg-orange-200/50 text-orange-800">{formatRp(totalNtk50)}</td>
+                              
+                              <td className="border border-slate-300 p-2 bg-blue-200/50 text-blue-800">{formatRp(totalTk20)}</td>
+                              <td className="border border-slate-300 p-2 bg-blue-200/50 text-blue-800">{formatRp(totalTk50)}</td>
+                            </tr>
+                          </tbody>
+                        </table>
+                      );
+                    })()}
+
+                    {stockOpnameView === 'tahunan' && (() => {
+                      let totalTerjual20Tahun = 0, totalTerjual50Tahun = 0;
+                      let totalNtk20Tahun = 0, totalNtk50Tahun = 0, totalTk20Tahun = 0, totalTk50Tahun = 0;
+                      const bulanLabels = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
+
+                      return (
+                        <table className="min-w-full text-xs text-center border-collapse">
+                          <thead className="bg-slate-100 text-slate-700 font-bold border-b-2 border-slate-300 text-[10px]">
+                            <tr>
+                              <th className="border border-slate-300 p-2" rowSpan="2">NO</th>
+                              <th className="border border-slate-300 p-2" rowSpan="2">BULAN</th>
+                              <th className="border border-slate-300 p-2 bg-emerald-100/50" colSpan="2">TOTAL TERJUAL/PCS</th>
+                              <th className="border border-slate-300 p-2 bg-orange-100/50" colSpan="2">TERJUAL NON TUNAI/PCS</th>
+                              <th className="border border-slate-300 p-2 bg-blue-100/50" colSpan="2">TERJUAL TUNAI/PCS</th>
+                            </tr>
+                            <tr>
+                              <th className="border border-slate-300 p-1 bg-emerald-100/30">SAL. 20</th><th className="border border-slate-300 p-1 bg-emerald-100/30">SAL. 50</th>
+                              <th className="border border-slate-300 p-1 bg-orange-100/30">SAL. 20</th><th className="border border-slate-300 p-1 bg-orange-100/30">SAL. 50</th>
+                              <th className="border border-slate-300 p-1 bg-blue-100/30">SAL. 20</th><th className="border border-slate-300 p-1 bg-blue-100/30">SAL. 50</th>
+                            </tr>
+                          </thead>
+                          <tbody className="font-medium">
+                            {bulanLabels.map((bulanStr, i) => {
+                              const monthStr = String(i + 1).padStart(2, '0');
+                              const yearMonthPrefix = `${stockOpnameYear}-${monthStr}-`;
+                              
+                              const monthRecords = records.filter(r => r.tanggal && r.tanggal.startsWith(yearMonthPrefix));
+                              const ntk20 = monthRecords.reduce((sum, r) => sum + (Number(r.ntk20) || 0), 0);
+                              const ntk50 = monthRecords.reduce((sum, r) => sum + (Number(r.ntk50) || 0), 0);
+                              const tk20 = monthRecords.reduce((sum, r) => sum + (Number(r.tk20) || 0), 0);
+                              const tk50 = monthRecords.reduce((sum, r) => sum + (Number(r.tk50) || 0), 0);
+                              const sold20 = ntk20 + tk20;
+                              const sold50 = ntk50 + tk50;
+
+                              totalTerjual20Tahun += sold20; totalTerjual50Tahun += sold50;
+                              totalNtk20Tahun += ntk20; totalNtk50Tahun += ntk50;
+                              totalTk20Tahun += tk20; totalTk50Tahun += tk50;
+
+                              return (
+                                <tr key={i} className="hover:bg-slate-50">
+                                  <td className="border border-slate-300 p-2">{i + 1}</td>
+                                  <td className="border border-slate-300 p-2 text-left pl-3 font-semibold uppercase">{bulanStr}</td>
+                                  
+                                  <td className="border border-slate-300 p-2 bg-emerald-50/50 text-emerald-700 font-bold">{sold20 || '-'}</td>
+                                  <td className="border border-slate-300 p-2 bg-emerald-50/50 text-emerald-700 font-bold">{sold50 || '-'}</td>
+                                  
+                                  <td className="border border-slate-300 p-2 bg-orange-50/50 text-orange-700">{ntk20 || '-'}</td>
+                                  <td className="border border-slate-300 p-2 bg-orange-50/50 text-orange-700">{ntk50 || '-'}</td>
+                                  
+                                  <td className="border border-slate-300 p-2 bg-blue-50/50 text-blue-700">{tk20 || '-'}</td>
+                                  <td className="border border-slate-300 p-2 bg-blue-50/50 text-blue-700">{tk50 || '-'}</td>
+                                </tr>
+                              );
+                            })}
+                            <tr className="bg-emerald-100/40 font-bold text-slate-800 border-t-2 border-slate-300">
+                              <td className="border border-slate-300 p-2 text-right uppercase" colSpan="2">TOTAL PENJUALAN TAHUNAN</td>
+                              
+                              <td className="border border-slate-300 p-2 bg-emerald-200/50 text-emerald-800">{formatRp(totalTerjual20Tahun)}</td>
+                              <td className="border border-slate-300 p-2 bg-emerald-200/50 text-emerald-800">{formatRp(totalTerjual50Tahun)}</td>
+                              
+                              <td className="border border-slate-300 p-2 bg-orange-200/50 text-orange-800">{formatRp(totalNtk20Tahun)}</td>
+                              <td className="border border-slate-300 p-2 bg-orange-200/50 text-orange-800">{formatRp(totalNtk50Tahun)}</td>
+                              
+                              <td className="border border-slate-300 p-2 bg-blue-200/50 text-blue-800">{formatRp(totalTk20Tahun)}</td>
+                              <td className="border border-slate-300 p-2 bg-blue-200/50 text-blue-800">{formatRp(totalTk50Tahun)}</td>
+                            </tr>
+                          </tbody>
+                        </table>
+                      );
+                    })()}
                   </div>
                 </div>
               )}
