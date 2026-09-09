@@ -1815,40 +1815,40 @@ export default function App() {
                                   
                                   <td className="border border-slate-300 p-2 bg-emerald-50/50 text-emerald-700">
                                     <div className="flex flex-col items-center">
-                                      <span className="font-bold text-sm">{sold20 || '-'}</span>
-                                      {sold20 > 0 && <div className="flex gap-2 text-[9px] mt-1.5 font-bold tracking-wide"><span className="text-sky-700 bg-sky-100/70 border border-sky-200 px-1.5 py-0.5 rounded shadow-sm">S: {sold20S}</span><span className="text-purple-700 bg-purple-100/70 border border-purple-200 px-1.5 py-0.5 rounded shadow-sm">M: {sold20M}</span></div>}
+                                      <span className="font-bold text-sm">{sold20 ? formatRp(sold20) : '-'}</span>
+                                      {sold20 > 0 && <div className="flex gap-2 text-[9px] mt-1.5 font-bold tracking-wide"><span className="text-sky-700 bg-sky-100/70 border border-sky-200 px-1.5 py-0.5 rounded shadow-sm">S: {formatRp(sold20S)}</span><span className="text-purple-700 bg-purple-100/70 border border-purple-200 px-1.5 py-0.5 rounded shadow-sm">M: {formatRp(sold20M)}</span></div>}
                                     </div>
                                   </td>
                                   <td className="border border-slate-300 p-2 bg-emerald-50/50 text-emerald-700">
                                     <div className="flex flex-col items-center">
-                                      <span className="font-bold text-sm">{sold50 || '-'}</span>
-                                      {sold50 > 0 && <div className="flex gap-2 text-[9px] mt-1.5 font-bold tracking-wide"><span className="text-sky-700 bg-sky-100/70 border border-sky-200 px-1.5 py-0.5 rounded shadow-sm">S: {sold50S}</span><span className="text-purple-700 bg-purple-100/70 border border-purple-200 px-1.5 py-0.5 rounded shadow-sm">M: {sold50M}</span></div>}
+                                      <span className="font-bold text-sm">{sold50 ? formatRp(sold50) : '-'}</span>
+                                      {sold50 > 0 && <div className="flex gap-2 text-[9px] mt-1.5 font-bold tracking-wide"><span className="text-sky-700 bg-sky-100/70 border border-sky-200 px-1.5 py-0.5 rounded shadow-sm">S: {formatRp(sold50S)}</span><span className="text-purple-700 bg-purple-100/70 border border-purple-200 px-1.5 py-0.5 rounded shadow-sm">M: {formatRp(sold50M)}</span></div>}
                                     </div>
                                   </td>
                                   
                                   <td className="border border-slate-300 p-2 bg-orange-50/50 text-orange-700">
                                     <div className="flex flex-col items-center">
-                                      <span className="font-bold text-sm">{ntk20 || '-'}</span>
-                                      {ntk20 > 0 && <div className="flex gap-2 text-[9px] mt-1.5 font-bold tracking-wide"><span className="text-sky-700 bg-sky-100/70 border border-sky-200 px-1.5 py-0.5 rounded shadow-sm">S: {ntk20S}</span><span className="text-purple-700 bg-purple-100/70 border border-purple-200 px-1.5 py-0.5 rounded shadow-sm">M: {ntk20M}</span></div>}
+                                      <span className="font-bold text-sm">{ntk20 ? formatRp(ntk20) : '-'}</span>
+                                      {ntk20 > 0 && <div className="flex gap-2 text-[9px] mt-1.5 font-bold tracking-wide"><span className="text-sky-700 bg-sky-100/70 border border-sky-200 px-1.5 py-0.5 rounded shadow-sm">S: {formatRp(ntk20S)}</span><span className="text-purple-700 bg-purple-100/70 border border-purple-200 px-1.5 py-0.5 rounded shadow-sm">M: {formatRp(ntk20M)}</span></div>}
                                     </div>
                                   </td>
                                   <td className="border border-slate-300 p-2 bg-orange-50/50 text-orange-700">
                                     <div className="flex flex-col items-center">
-                                      <span className="font-bold text-sm">{ntk50 || '-'}</span>
-                                      {ntk50 > 0 && <div className="flex gap-2 text-[9px] mt-1.5 font-bold tracking-wide"><span className="text-sky-700 bg-sky-100/70 border border-sky-200 px-1.5 py-0.5 rounded shadow-sm">S: {ntk50S}</span><span className="text-purple-700 bg-purple-100/70 border border-purple-200 px-1.5 py-0.5 rounded shadow-sm">M: {ntk50M}</span></div>}
+                                      <span className="font-bold text-sm">{ntk50 ? formatRp(ntk50) : '-'}</span>
+                                      {ntk50 > 0 && <div className="flex gap-2 text-[9px] mt-1.5 font-bold tracking-wide"><span className="text-sky-700 bg-sky-100/70 border border-sky-200 px-1.5 py-0.5 rounded shadow-sm">S: {formatRp(ntk50S)}</span><span className="text-purple-700 bg-purple-100/70 border border-purple-200 px-1.5 py-0.5 rounded shadow-sm">M: {formatRp(ntk50M)}</span></div>}
                                     </div>
                                   </td>
                                   
                                   <td className="border border-slate-300 p-2 bg-blue-50/50 text-blue-700">
                                     <div className="flex flex-col items-center">
-                                      <span className="font-bold text-sm">{tk20 || '-'}</span>
-                                      {tk20 > 0 && <div className="flex gap-2 text-[9px] mt-1.5 font-bold tracking-wide"><span className="text-sky-700 bg-sky-100/70 border border-sky-200 px-1.5 py-0.5 rounded shadow-sm">S: {tk20S}</span><span className="text-purple-700 bg-purple-100/70 border border-purple-200 px-1.5 py-0.5 rounded shadow-sm">M: {tk20M}</span></div>}
+                                      <span className="font-bold text-sm">{tk20 ? formatRp(tk20) : '-'}</span>
+                                      {tk20 > 0 && <div className="flex gap-2 text-[9px] mt-1.5 font-bold tracking-wide"><span className="text-sky-700 bg-sky-100/70 border border-sky-200 px-1.5 py-0.5 rounded shadow-sm">S: {formatRp(tk20S)}</span><span className="text-purple-700 bg-purple-100/70 border border-purple-200 px-1.5 py-0.5 rounded shadow-sm">M: {formatRp(tk20M)}</span></div>}
                                     </div>
                                   </td>
                                   <td className="border border-slate-300 p-2 bg-blue-50/50 text-blue-700">
                                     <div className="flex flex-col items-center">
-                                      <span className="font-bold text-sm">{tk50 || '-'}</span>
-                                      {tk50 > 0 && <div className="flex gap-2 text-[9px] mt-1.5 font-bold tracking-wide"><span className="text-sky-700 bg-sky-100/70 border border-sky-200 px-1.5 py-0.5 rounded shadow-sm">S: {tk50S}</span><span className="text-purple-700 bg-purple-100/70 border border-purple-200 px-1.5 py-0.5 rounded shadow-sm">M: {tk50M}</span></div>}
+                                      <span className="font-bold text-sm">{tk50 ? formatRp(tk50) : '-'}</span>
+                                      {tk50 > 0 && <div className="flex gap-2 text-[9px] mt-1.5 font-bold tracking-wide"><span className="text-sky-700 bg-sky-100/70 border border-sky-200 px-1.5 py-0.5 rounded shadow-sm">S: {formatRp(tk50S)}</span><span className="text-purple-700 bg-purple-100/70 border border-purple-200 px-1.5 py-0.5 rounded shadow-sm">M: {formatRp(tk50M)}</span></div>}
                                     </div>
                                   </td>
                                 </tr>
