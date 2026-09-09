@@ -1749,10 +1749,6 @@ export default function App() {
                     {stockOpnameView === 'bulanan' && (() => {
                       const daysInMonth = new Date(Number(stockOpnameYear), Number(stockOpnameMonth), 0).getDate();
                       
-                      let currentStock20 = Number(stockOpnameData?.stokAwal20 || 0);
-                      let currentStock50 = Number(stockOpnameData?.stokAwal50 || 0);
-                      
-                      let totalPenambahan20 = 0, totalPenambahan50 = 0;
                       let totalTerjual20 = 0, totalTerjual50 = 0;
                       let totalNtk20 = 0, totalNtk50 = 0, totalTk20 = 0, totalTk50 = 0;
 
@@ -1762,35 +1758,25 @@ export default function App() {
                             <tr>
                               <th className="border border-slate-300 p-2" rowSpan="2">NO</th>
                               <th className="border border-slate-300 p-2" rowSpan="2">TANGGAL</th>
-                              <th className="border border-slate-300 p-2 bg-slate-200/50" colSpan="2">STOK AWAL/PCS</th>
-                              <th className="border border-slate-300 p-2 bg-slate-200/50" colSpan="2">PENAMBAHAN</th>
-                              <th className="border border-slate-300 p-2 bg-slate-200/50" colSpan="2">JUMLAH STOK/PCS</th>
                               <th className="border border-slate-300 p-2 bg-emerald-100/50" colSpan="2">TOTAL TERJUAL/PCS</th>
                               <th className="border border-slate-300 p-2 bg-orange-100/50" colSpan="2">TERJUAL NON TUNAI/PCS</th>
                               <th className="border border-slate-300 p-2 bg-blue-100/50" colSpan="2">TERJUAL TUNAI/PCS</th>
                             </tr>
                             <tr>
-                              <th className="border border-slate-300 p-1 bg-slate-200/30">SAL. 20</th><th className="border border-slate-300 p-1 bg-slate-200/30">SAL. 50</th>
-                              <th className="border border-slate-300 p-1 bg-slate-200/30">SAL. 20</th><th className="border border-slate-300 p-1 bg-slate-200/30">SAL. 50</th>
-                              <th className="border border-slate-300 p-1 bg-slate-200/30">SAL. 20</th><th className="border border-slate-300 p-1 bg-slate-200/30">SAL. 50</th>
                               <th className="border border-slate-300 p-1 bg-emerald-100/30">SAL. 20</th><th className="border border-slate-300 p-1 bg-emerald-100/30">SAL. 50</th>
                               <th className="border border-slate-300 p-1 bg-orange-100/30">SAL. 20</th><th className="border border-slate-300 p-1 bg-orange-100/30">SAL. 50</th>
                               <th className="border border-slate-300 p-1 bg-blue-100/30">SAL. 20</th><th className="border border-slate-300 p-1 bg-blue-100/30">SAL. 50</th>
                             </tr>
                           </thead>
                           <tbody className="font-medium">
-                            <tr className="bg-slate-50 font-bold hover:bg-slate-100">
-                              <td className="border border-slate-300 p-2">1</td>
-                              <td className="border border-slate-300 p-2 text-left">Stok Awal</td>
-                              <td className="border border-slate-300 p-1 bg-slate-200/20"><input type="number" value={stockOpnameData.stokAwal20 || ''} onChange={e => handleSaveStockOpname('stokAwal20', e.target.value)} className="w-12 text-center bg-transparent outline-none border-b border-slate-400 focus:border-emerald-500" placeholder="0" /></td>
-                              <td className="border border-slate-300 p-1 bg-slate-200/20"><input type="number" value={stockOpnameData.stokAwal50 || ''} onChange={e => handleSaveStockOpname('stokAwal50', e.target.value)} className="w-12 text-center bg-transparent outline-none border-b border-slate-400 focus:border-emerald-500" placeholder="0" /></td>
-                              <td className="border border-slate-300 p-2 bg-slate-200/20" colSpan="10"></td>
-                            </tr>
                             {Array.from({length: daysInMonth}, (_, i) => {
                               const day = String(i + 1).padStart(2, '0');
                               const dateStr = `${stockOpnameYear}-${stockOpnameMonth}-${day}`;
                               
                               const dayRecords = records.filter(r => r.tanggal === dateStr);
+                              const dayRecordsSiang = dayRecords.filter(r => (r.sesi || 'Siang') === 'Siang');
+                              const dayRecordsMalam = dayRecords.filter(r => r.sesi === 'Malam');
+
                               const ntk20 = dayRecords.reduce((sum, r) => sum + (Number(r.ntk20) || 0), 0);
                               const ntk50 = dayRecords.reduce((sum, r) => sum + (Number(r.ntk50) || 0), 0);
                               const tk20 = dayRecords.reduce((sum, r) => sum + (Number(r.tk20) || 0), 0);
@@ -1798,64 +1784,81 @@ export default function App() {
                               const sold20 = ntk20 + tk20;
                               const sold50 = ntk50 + tk50;
 
-                              const penambahan = stockOpnameData.penambahan?.[dateStr] || { p20: 0, p50: 0 };
-                              const p20 = Number(penambahan.p20) || 0;
-                              const p50 = Number(penambahan.p50) || 0;
+                              const ntk20S = dayRecordsSiang.reduce((sum, r) => sum + (Number(r.ntk20) || 0), 0);
+                              const ntk50S = dayRecordsSiang.reduce((sum, r) => sum + (Number(r.ntk50) || 0), 0);
+                              const tk20S = dayRecordsSiang.reduce((sum, r) => sum + (Number(r.tk20) || 0), 0);
+                              const tk50S = dayRecordsSiang.reduce((sum, r) => sum + (Number(r.tk50) || 0), 0);
+                              const sold20S = ntk20S + tk20S;
+                              const sold50S = ntk50S + tk50S;
 
-                              const start20 = currentStock20;
-                              const start50 = currentStock50;
+                              const ntk20M = dayRecordsMalam.reduce((sum, r) => sum + (Number(r.ntk20) || 0), 0);
+                              const ntk50M = dayRecordsMalam.reduce((sum, r) => sum + (Number(r.ntk50) || 0), 0);
+                              const tk20M = dayRecordsMalam.reduce((sum, r) => sum + (Number(r.tk20) || 0), 0);
+                              const tk50M = dayRecordsMalam.reduce((sum, r) => sum + (Number(r.tk50) || 0), 0);
+                              const sold20M = ntk20M + tk20M;
+                              const sold50M = ntk50M + tk50M;
 
-                              const jml20 = start20 + p20;
-                              const jml50 = start50 + p50;
-
-                              currentStock20 = jml20 - sold20;
-                              currentStock50 = jml50 - sold50;
-
-                              totalPenambahan20 += p20; totalPenambahan50 += p50;
                               totalTerjual20 += sold20; totalTerjual50 += sold50;
                               totalNtk20 += ntk20; totalNtk50 += ntk50;
                               totalTk20 += tk20; totalTk50 += tk50;
 
                               return (
                                 <tr key={i} className="hover:bg-slate-50">
-                                  <td className="border border-slate-300 p-1">{i + 2}</td>
-                                  <td className="border border-slate-300 p-1 whitespace-nowrap text-left pl-2 font-semibold">{`${day}/${stockOpnameMonth}/${stockOpnameYear}`}</td>
+                                  <td className="border border-slate-300 p-2">{i + 1}</td>
+                                  <td className="border border-slate-300 p-2 whitespace-nowrap text-left pl-3 font-semibold">{`${day}/${stockOpnameMonth}/${stockOpnameYear}`}</td>
                                   
-                                  <td className="border border-slate-300 p-1 bg-slate-100/50 font-bold">{formatRp(start20)}</td>
-                                  <td className="border border-slate-300 p-1 bg-slate-100/50 font-bold">{formatRp(start50)}</td>
+                                  <td className="border border-slate-300 p-2 bg-emerald-50/50 text-emerald-700">
+                                    <div className="flex flex-col items-center">
+                                      <span className="font-bold text-sm">{sold20 || '-'}</span>
+                                      {sold20 > 0 && <span className="text-[10px] text-emerald-600/70 mt-0.5">S:{sold20S} M:{sold20M}</span>}
+                                    </div>
+                                  </td>
+                                  <td className="border border-slate-300 p-2 bg-emerald-50/50 text-emerald-700">
+                                    <div className="flex flex-col items-center">
+                                      <span className="font-bold text-sm">{sold50 || '-'}</span>
+                                      {sold50 > 0 && <span className="text-[10px] text-emerald-600/70 mt-0.5">S:{sold50S} M:{sold50M}</span>}
+                                    </div>
+                                  </td>
                                   
-                                  <td className="border border-slate-300 p-1 bg-slate-50"><input type="number" value={p20 || ''} onChange={e => handleSaveStockOpname('p20', e.target.value, dateStr)} className="w-10 text-center bg-transparent outline-none border-b border-dashed border-slate-400 focus:border-emerald-500 hover:bg-slate-100" placeholder="-" /></td>
-                                  <td className="border border-slate-300 p-1 bg-slate-50"><input type="number" value={p50 || ''} onChange={e => handleSaveStockOpname('p50', e.target.value, dateStr)} className="w-10 text-center bg-transparent outline-none border-b border-dashed border-slate-400 focus:border-emerald-500 hover:bg-slate-100" placeholder="-" /></td>
+                                  <td className="border border-slate-300 p-2 bg-orange-50/50 text-orange-700">
+                                    <div className="flex flex-col items-center">
+                                      <span className="font-bold text-sm">{ntk20 || '-'}</span>
+                                      {ntk20 > 0 && <span className="text-[10px] text-orange-600/70 mt-0.5">S:{ntk20S} M:{ntk20M}</span>}
+                                    </div>
+                                  </td>
+                                  <td className="border border-slate-300 p-2 bg-orange-50/50 text-orange-700">
+                                    <div className="flex flex-col items-center">
+                                      <span className="font-bold text-sm">{ntk50 || '-'}</span>
+                                      {ntk50 > 0 && <span className="text-[10px] text-orange-600/70 mt-0.5">S:{ntk50S} M:{ntk50M}</span>}
+                                    </div>
+                                  </td>
                                   
-                                  <td className="border border-slate-300 p-1 bg-slate-100/50 font-bold">{formatRp(jml20)}</td>
-                                  <td className="border border-slate-300 p-1 bg-slate-100/50 font-bold">{formatRp(jml50)}</td>
-                                  
-                                  <td className="border border-slate-300 p-1 bg-emerald-50/50 text-emerald-700 font-bold">{sold20 || '-'}</td>
-                                  <td className="border border-slate-300 p-1 bg-emerald-50/50 text-emerald-700 font-bold">{sold50 || '-'}</td>
-                                  
-                                  <td className="border border-slate-300 p-1 bg-orange-50/50 text-orange-700">{ntk20 || '-'}</td>
-                                  <td className="border border-slate-300 p-1 bg-orange-50/50 text-orange-700">{ntk50 || '-'}</td>
-                                  
-                                  <td className="border border-slate-300 p-1 bg-blue-50/50 text-blue-700">{tk20 || '-'}</td>
-                                  <td className="border border-slate-300 p-1 bg-blue-50/50 text-blue-700">{tk50 || '-'}</td>
+                                  <td className="border border-slate-300 p-2 bg-blue-50/50 text-blue-700">
+                                    <div className="flex flex-col items-center">
+                                      <span className="font-bold text-sm">{tk20 || '-'}</span>
+                                      {tk20 > 0 && <span className="text-[10px] text-blue-600/70 mt-0.5">S:{tk20S} M:{tk20M}</span>}
+                                    </div>
+                                  </td>
+                                  <td className="border border-slate-300 p-2 bg-blue-50/50 text-blue-700">
+                                    <div className="flex flex-col items-center">
+                                      <span className="font-bold text-sm">{tk50 || '-'}</span>
+                                      {tk50 > 0 && <span className="text-[10px] text-blue-600/70 mt-0.5">S:{tk50S} M:{tk50M}</span>}
+                                    </div>
+                                  </td>
                                 </tr>
                               );
                             })}
-                            <tr className="bg-amber-100/40 font-bold text-slate-800 border-t-2 border-slate-300">
-                              <td className="border border-slate-300 p-2 text-right uppercase" colSpan="2">Jumlah Kartu</td>
-                              <td className="border border-slate-300 p-2 bg-amber-200/50 text-right uppercase" colSpan="2">Penambahan</td>
-                              <td className="border border-slate-300 p-2 bg-amber-200/50 text-center text-amber-800">{formatRp(totalPenambahan20)}</td>
-                              <td className="border border-slate-300 p-2 bg-amber-200/50 text-center text-amber-800">{formatRp(totalPenambahan50)}</td>
+                            <tr className="bg-emerald-100/40 font-bold text-slate-800 border-t-2 border-slate-300">
+                              <td className="border border-slate-300 p-3 text-right uppercase" colSpan="2">TOTAL KESELURUHAN</td>
                               
-                              <td className="border border-slate-300 p-2 bg-teal-100/50 text-right uppercase" colSpan="2">Terjual</td>
-                              <td className="border border-slate-300 p-2 bg-emerald-200/50 text-emerald-800">{formatRp(totalTerjual20)}</td>
-                              <td className="border border-slate-300 p-2 bg-emerald-200/50 text-emerald-800">{formatRp(totalTerjual50)}</td>
+                              <td className="border border-slate-300 p-3 bg-emerald-200/50 text-emerald-800">{formatRp(totalTerjual20)}</td>
+                              <td className="border border-slate-300 p-3 bg-emerald-200/50 text-emerald-800">{formatRp(totalTerjual50)}</td>
                               
-                              <td className="border border-slate-300 p-2 bg-orange-200/50 text-orange-800">{formatRp(totalNtk20)}</td>
-                              <td className="border border-slate-300 p-2 bg-orange-200/50 text-orange-800">{formatRp(totalNtk50)}</td>
+                              <td className="border border-slate-300 p-3 bg-orange-200/50 text-orange-800">{formatRp(totalNtk20)}</td>
+                              <td className="border border-slate-300 p-3 bg-orange-200/50 text-orange-800">{formatRp(totalNtk50)}</td>
                               
-                              <td className="border border-slate-300 p-2 bg-blue-200/50 text-blue-800">{formatRp(totalTk20)}</td>
-                              <td className="border border-slate-300 p-2 bg-blue-200/50 text-blue-800">{formatRp(totalTk50)}</td>
+                              <td className="border border-slate-300 p-3 bg-blue-200/50 text-blue-800">{formatRp(totalTk20)}</td>
+                              <td className="border border-slate-300 p-3 bg-blue-200/50 text-blue-800">{formatRp(totalTk50)}</td>
                             </tr>
                           </tbody>
                         </table>
