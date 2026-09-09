@@ -1914,14 +1914,14 @@ export default function App() {
                                   <td className="border border-slate-300 p-2">{i + 1}</td>
                                   <td className="border border-slate-300 p-2 text-left pl-3 font-semibold uppercase">{bulanStr}</td>
                                   
-                                  <td className="border border-slate-300 p-2 bg-emerald-50/50 text-emerald-700 font-bold">{sold20 || '-'}</td>
-                                  <td className="border border-slate-300 p-2 bg-emerald-50/50 text-emerald-700 font-bold">{sold50 || '-'}</td>
+                                  <td className="border border-slate-300 p-2 bg-emerald-50/50 text-emerald-700 font-bold">{sold20 ? formatRp(sold20) : '-'}</td>
+                                  <td className="border border-slate-300 p-2 bg-emerald-50/50 text-emerald-700 font-bold">{sold50 ? formatRp(sold50) : '-'}</td>
                                   
-                                  <td className="border border-slate-300 p-2 bg-orange-50/50 text-orange-700">{ntk20 || '-'}</td>
-                                  <td className="border border-slate-300 p-2 bg-orange-50/50 text-orange-700">{ntk50 || '-'}</td>
+                                  <td className="border border-slate-300 p-2 bg-orange-50/50 text-orange-700">{ntk20 ? formatRp(ntk20) : '-'}</td>
+                                  <td className="border border-slate-300 p-2 bg-orange-50/50 text-orange-700">{ntk50 ? formatRp(ntk50) : '-'}</td>
                                   
-                                  <td className="border border-slate-300 p-2 bg-blue-50/50 text-blue-700">{tk20 || '-'}</td>
-                                  <td className="border border-slate-300 p-2 bg-blue-50/50 text-blue-700">{tk50 || '-'}</td>
+                                  <td className="border border-slate-300 p-2 bg-blue-50/50 text-blue-700">{tk20 ? formatRp(tk20) : '-'}</td>
+                                  <td className="border border-slate-300 p-2 bg-blue-50/50 text-blue-700">{tk50 ? formatRp(tk50) : '-'}</td>
                                 </tr>
                               );
                             })}
