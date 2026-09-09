@@ -1810,39 +1810,39 @@ export default function App() {
                                   <td className="border border-slate-300 p-2 bg-emerald-50/50 text-emerald-700">
                                     <div className="flex flex-col items-center">
                                       <span className="font-bold text-sm">{sold20 || '-'}</span>
-                                      {sold20 > 0 && <span className="text-[10px] text-emerald-600/70 mt-0.5">S:{sold20S} M:{sold20M}</span>}
+                                      {sold20 > 0 && <div className="flex gap-2.5 text-[10px] mt-0.5 font-semibold"><span className="text-sky-600">S:{sold20S}</span><span className="text-purple-600">M:{sold20M}</span></div>}
                                     </div>
                                   </td>
                                   <td className="border border-slate-300 p-2 bg-emerald-50/50 text-emerald-700">
                                     <div className="flex flex-col items-center">
                                       <span className="font-bold text-sm">{sold50 || '-'}</span>
-                                      {sold50 > 0 && <span className="text-[10px] text-emerald-600/70 mt-0.5">S:{sold50S} M:{sold50M}</span>}
+                                      {sold50 > 0 && <div className="flex gap-2.5 text-[10px] mt-0.5 font-semibold"><span className="text-sky-600">S:{sold50S}</span><span className="text-purple-600">M:{sold50M}</span></div>}
                                     </div>
                                   </td>
                                   
                                   <td className="border border-slate-300 p-2 bg-orange-50/50 text-orange-700">
                                     <div className="flex flex-col items-center">
                                       <span className="font-bold text-sm">{ntk20 || '-'}</span>
-                                      {ntk20 > 0 && <span className="text-[10px] text-orange-600/70 mt-0.5">S:{ntk20S} M:{ntk20M}</span>}
+                                      {ntk20 > 0 && <div className="flex gap-2.5 text-[10px] mt-0.5 font-semibold"><span className="text-sky-600">S:{ntk20S}</span><span className="text-purple-600">M:{ntk20M}</span></div>}
                                     </div>
                                   </td>
                                   <td className="border border-slate-300 p-2 bg-orange-50/50 text-orange-700">
                                     <div className="flex flex-col items-center">
                                       <span className="font-bold text-sm">{ntk50 || '-'}</span>
-                                      {ntk50 > 0 && <span className="text-[10px] text-orange-600/70 mt-0.5">S:{ntk50S} M:{ntk50M}</span>}
+                                      {ntk50 > 0 && <div className="flex gap-2.5 text-[10px] mt-0.5 font-semibold"><span className="text-sky-600">S:{ntk50S}</span><span className="text-purple-600">M:{ntk50M}</span></div>}
                                     </div>
                                   </td>
                                   
                                   <td className="border border-slate-300 p-2 bg-blue-50/50 text-blue-700">
                                     <div className="flex flex-col items-center">
                                       <span className="font-bold text-sm">{tk20 || '-'}</span>
-                                      {tk20 > 0 && <span className="text-[10px] text-blue-600/70 mt-0.5">S:{tk20S} M:{tk20M}</span>}
+                                      {tk20 > 0 && <div className="flex gap-2.5 text-[10px] mt-0.5 font-semibold"><span className="text-sky-600">S:{tk20S}</span><span className="text-purple-600">M:{tk20M}</span></div>}
                                     </div>
                                   </td>
                                   <td className="border border-slate-300 p-2 bg-blue-50/50 text-blue-700">
                                     <div className="flex flex-col items-center">
                                       <span className="font-bold text-sm">{tk50 || '-'}</span>
-                                      {tk50 > 0 && <span className="text-[10px] text-blue-600/70 mt-0.5">S:{tk50S} M:{tk50M}</span>}
+                                      {tk50 > 0 && <div className="flex gap-2.5 text-[10px] mt-0.5 font-semibold"><span className="text-sky-600">S:{tk50S}</span><span className="text-purple-600">M:{tk50M}</span></div>}
                                     </div>
                                   </td>
                                 </tr>
